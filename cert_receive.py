@@ -619,7 +619,6 @@ def reload_service(config):
         stdin=subprocess.DEVNULL,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
-        encoding='utf-8',
         shell=True,
         preexec_fn=lambda: os.setpgid(0, 0))
 
@@ -646,6 +645,7 @@ def reload_service(config):
         else:
             msgs.append('    Process died due to signal {}.'
                         .format(-proc.returncode))
+        output = str(output, encoding='utf-8')
         output = output.strip('\r\n')
         if output:
             msgs.append('>>>> OUTPUT >>>>')
