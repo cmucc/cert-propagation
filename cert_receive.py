@@ -525,6 +525,7 @@ def backup_one_file(file_name, backup_file_name):
     if os.geteuid() == 0:
         os.chown(backup_file_name, s.st_uid, s.st_gid)
     os.chmod(backup_file_name, stat.S_IMODE(s.st_mode))
+    os.utime(backup_file_name, ns=(s.st_atime_ns, s.st_mtime_ns))
     return True
 
 def install_files(config, certificates, key):
