@@ -545,15 +545,15 @@ def install_files(config, certificates, key):
 
     if config['bundle_key']:
         if config['bundle_order'] == 'key_first':
-            key_data = key + '\n'.join(certificate_data)
+            key_data = ''.join([key] + certificate_data)
         else:
-            key_data = '\n'.join(certificate_data) + key
+            key_data = ''.join(certificate_data + [key])
         certificate_data = []
     elif key is not None:
         key_data = key
 
-    certificate_data = '\n'.join(certificate_data)
-    intermediate_data = '\n'.join(intermediate_data)
+    certificate_data = ''.join(certificate_data)
+    intermediate_data = ''.join(intermediate_data)
 
     tmpsuffix = '.new-{}'.format(os.getpid())
 
