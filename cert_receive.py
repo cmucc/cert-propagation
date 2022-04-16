@@ -665,8 +665,11 @@ def reload_service(config):
             timedout = True
             os.kill(-proc.pid, signal.SIGTERM)
             output, _ = proc.communicate(timeout=10)
-    except subprocess.TimeoutExpired:
-        os.kill(-proc.pid, signal.SIGKILL)
+    except (subprocess.TimeoutExpired, ProcessLookupError):
+        try:
+            os.kill(-proc.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
         output, _ = proc.communicate()
 
     if proc.returncode != 0:
