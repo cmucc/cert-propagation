@@ -397,26 +397,43 @@ def verify_certificate_subject_cn(cert_object, expected_cn):
                                       'subject CN')
 
 def read_key_from_file(key_file_name):
+    '''
+    Reads and returns an already-installed PEM private key.
+
+    Raises BadConfigException if there is an issue reading the key file.
+
+    Raises BadKeyException if the key file does not appear to contain a PEM
+    private key.
+    '''
     reacquire_privileges()
+
     try:
-        with open(key_file_name, 'rt') as key_file:
-            st = os.stat(key_file.fileno())
-            if st.st_size > 50000:
-                raise BadKeyException('Error, refusing to load private key '
-                                      'from unexpectedly large file')
-            remaining = st.st_size
-            chunks = []
-            while remaining > 0:
-                chunk = key_file.read(remaining)
-                if len(chunk) == 0:
-                    break
-                remaining -= len(chunk)
-                chunks.append(chunk)
-            data = ''.join(chunks)
+        key_in = open(key_file_name, 'rt')
     except IOError as e:
-        raise BadConfigException('Error reading key file:\n' + str(e))
+        raise BadConfigException('Error opening key file:\n' + str(e))
     finally:
         drop_privileges()
+
+    try:
+        st = os.stat(key_in.fileno())
+        if st.st_size > 20000:
+            raise BadKeyException('Error, refusing to load private key '
+                                  'from unexpectedly large file')
+        remaining = st.st_size
+        chunks = []
+        while remaining > 0:
+            chunk = key_in.read(remaining)
+            if len(chunk) == 0:
+                break
+            remaining -= len(chunk)
+            chunks.append(chunk)
+        data = ''.join(chunks)
+
+    except IOError as e:
+        raise BadConfigException('Error reading key file:\n' + str(e))
+
+    finally:
+        key_in.close()
 
     match = re.search(r'^-----BEGIN ((?:RSA )?PRIVATE KEY)-----\r?\n.*?'
                       r'^-----END \1-----\r?\n',
