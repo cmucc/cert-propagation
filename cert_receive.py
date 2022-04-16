@@ -114,6 +114,8 @@ def load_configuration(config_in):
 
     return config
 
+#: Indicates the supported configuration keys and the types their values
+#: should have.
 CFG_VALID_SETTINGS = {
     'bundle_intermediate':      bool,
     'bundle_key':               bool,
@@ -141,6 +143,7 @@ CFG_VALID_SETTINGS = {
     'verify_trusted_ca':        bool,
 }
 
+#: Indicates the default values for configuration keys.
 CFG_DEFAULT_SETTINGS = {
     'bundle_intermediate':      False,
     'bundle_key':               False,
@@ -161,6 +164,8 @@ CFG_DEFAULT_SETTINGS = {
     'verify_trusted_ca':        True,
 }
 
+#: Mapping of Python types to the JSON type that parses into the Python type.
+#: Used for error messages during configuration validation.
 CFG_TYPE_TO_JSON = {
     bool:       'boolean',
     dict:       'object',
@@ -371,6 +376,13 @@ def interact_with_sender(full_config):
     return (section, certificates, key)
 
 def verify_certificate_chain(cert_objects):
+    '''
+    Validates the provided cert_objects chain, e.g., the issuer of the first
+    certificate is the subject of the second, the issuer of the second is the
+    subject of the third, and so forth.
+
+    Raises BadCertificateException if the cert_objects do not form a chain.
+    '''
     prior_issuer = cert_objects[0].get_issuer()
     for cert_object in cert_objects[1:]:
         if prior_issuer != cert_object.get_subject():
@@ -380,6 +392,11 @@ def verify_certificate_chain(cert_objects):
         prior_issuer = cert_object.get_issuer()
 
 def verify_certificate_times(cert_objects):
+    '''
+    Validates that the provided cert_objects are valid now.
+
+    Raises BadCertificateException if any certificate is not valid now.
+    '''
     now = time.strftime('%Y%m%d%H%M%SZ', time.gmtime()).encode()
     for cert_object in cert_objects:
         if not cert_object.get_notBefore() <= now <= cert_object.get_notAfter():
@@ -389,6 +406,13 @@ def verify_certificate_times(cert_objects):
                                           str(cert_object.get_subject()))
 
 def verify_certificate_subject_cn(cert_object, expected_cn):
+    '''
+    Validates that the subject of the provided cert_object has a common name
+    equal to expected_cn.
+
+    Raises BadCertificateException if the certificate subject does not contain
+    the expected common name.
+    '''
     for ntype, nvalue in cert_object.get_subject().get_components():
         if ntype == b'CN' and nvalue == expected_cn.encode():
             break
@@ -446,6 +470,12 @@ def read_key_from_file(key_file_name):
     return match.group(0)
 
 def verify_certificate_matches_key(cert_object, key_object):
+    '''
+    Validates that the public key associated with cert_object and private
+    key associated with key_object are a matching pair.
+
+    Raises BadCertificateException if the certificate does not match the key.
+    '''
     for method_name in ('TLS_METHOD', 'TLSv1_METHOD'):
         method = getattr(ssl, method_name, None)
         if method is not None:
@@ -565,6 +595,16 @@ def _verify_trust_openssl_subprocess(config, certificates):
             os.unlink(intermediate_temp_file_name)
 
 def verify_certificate_issued_by_trusted_ca(config, certificates, cert_objects):
+    '''
+    Validates that the received service certificate has a verification path to
+    a trusted CA.
+
+    Raises BadConfigException if a system error prevented verification from
+    completing.
+
+    Raises BadCertificateException if the service certificate failed
+    verification.
+    '''
     if hasattr(ssl_crypto.X509Store, 'load_locations'):
         _verify_trust_python(config, cert_objects)
     else:
