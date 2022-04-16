@@ -300,7 +300,7 @@ def interact_with_sender(full_config):
     provide the expected data.
     '''
     sender = pexpect.fdpexpect.fdspawn(sys.stdin,
-                                       timeout=g_args.timeout,
+                                       timeout=g_args.receive_timeout,
                                        maxread=20000,
                                        encoding='utf-8')
 
@@ -683,11 +683,11 @@ def main():
                         action='store_true')
     parser.add_argument('--config-file',
                         default=DEFAULT_CONFIG_FILE)
-    parser.add_argument('--set-effective-user',
-                        default='nobody')
-    parser.add_argument('--timeout',
+    parser.add_argument('--receive-timeout',
                         type=int,
                         default=10)
+    parser.add_argument('--set-effective-user',
+                        default='nobody')
     parser.add_argument('--no-set-effective-user',
                         dest='set_effective_user',
                         action='store_const',
