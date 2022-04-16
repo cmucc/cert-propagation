@@ -445,9 +445,10 @@ def read_key_from_file(key_file_name):
     return match.group(0)
 
 def verify_certificate_matches_key(cert_object, key_object):
-    method = getattr(ssl, 'TLS_METHOD', None)
-    if method is None:
-        method = ssl.TLSv1_METHOD
+    for method_name in ('TLS_METHOD', 'TLSv1_METHOD'):
+        method = getattr(ssl, method_name, None)
+        if method is not None:
+            break
     ctx = ssl.Context(method)
     ctx.use_certificate(cert_object)
     ctx.use_privatekey(key_object)
