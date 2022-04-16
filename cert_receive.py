@@ -283,10 +283,21 @@ def check_configuration_section(name, section):
 
     return (heading, errors, warnings)
 
-def interact_with_sender(config):
+def interact_with_sender(full_config):
     '''
     Processes input from the sender.  Identifies the applicable configuration,
-    then extracts the certificates and, if provided, private key.
+    then extracts the certificates and, if provided, the private key.
+
+    Returns a 3-tuple consisting of: 1) the applicable configuration section,
+    as a dictionary, 2) a list of received certificates, 3) the received
+    private key, or None if no private key was sent.
+
+    Raises BadConfigException if the configuration name presented by the
+    sender is unknown or if there are errors in the associated configuration
+    section.
+
+    Raises BadSenderException if the sender does not follow protocol or
+    provide the expected data.
     '''
     sender = pexpect.fdpexpect.fdspawn(sys.stdin,
                                        timeout=g_args.timeout,
@@ -296,13 +307,13 @@ def interact_with_sender(config):
     try:
         sender.expect(r'^(\w+)\r?\n')
         name = sender.match.group(1)
-        if name not in config:
+        if name not in full_config:
             print('Unknown configuration')
             raise BadConfigException('Aborting, no configuration section '
                                      'for "{}"'
                                      .format(name))
 
-        section = config[name]
+        section = full_config[name]
         header, errors, warnings = check_configuration_section(name, section)
         if errors:
             print('Error in configuration')
