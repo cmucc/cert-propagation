@@ -647,16 +647,19 @@ def write_one_file(file_name, data, config, setting_prefix):
         os.chown(file_name, uid, gid)
     os.chmod(file_name, config[setting_prefix + 'perms'])
 
-def backup_one_file(file_name, backup_file_name):
+def backup_one_file(file_name, new_data, backup_file_name):
     try:
         with open(file_name, 'rb') as f:
-            data = f.read()
+            existing_data = f.read()
             s = os.stat(f.fileno())
     except FileNotFoundError:
         return False
 
+    if existing_data == new_data.encode():
+        return False
+
     with open(backup_file_name, 'wb') as f:
-        f.write(data)
+        f.write(existing_data)
     if os.geteuid() == 0:
         os.chown(backup_file_name, s.st_uid, s.st_gid)
     os.chmod(backup_file_name, stat.S_IMODE(s.st_mode))
@@ -707,15 +710,15 @@ def install_files(config, certificates, key):
             if thing == 'key' and config['bundle_key']:
                 file_name = config['certificate_path']
             if data and file_name:
-                written.append(file_name)
+                written.append((file_name, data))
                 write_one_file(file_name + tmpsuffix, data, config, prefix)
 
-        for file_name in written:
-            if backup_one_file(file_name, file_name + '.bak'):
+        for file_name, data in written:
+            if backup_one_file(file_name, data, file_name + '.bak'):
                 backed_up.add(file_name)
 
         while written:
-            file_name = written[-1]
+            file_name, _ = written[-1]
             os.rename(file_name + tmpsuffix, file_name)
             installed.append(written.pop())
 
