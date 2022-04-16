@@ -14,6 +14,7 @@ import signal
 import stat
 import subprocess
 import sys
+import tempfile
 import time
 
 DEFAULT_CA_PATH = '/etc/ssl/certs'
@@ -458,7 +459,7 @@ def verify_certificate_matches_key(cert_object, key_object):
         raise BadCertificateException('Error, certficate from sender does '
                                       'not match private key')
 
-def verify_certificate_issued_by_trusted_ca(config, cert_objects):
+def _verify_trust_python(config, cert_objects):
     store = ssl_crypto.X509Store()
     if 'ca_file' in config:
         store.load_locations(cafile=config['ca_file'], capath=None)
@@ -471,6 +472,103 @@ def verify_certificate_issued_by_trusted_ca(config, cert_objects):
         raise BadCertificateException('Error, could not verify certificate '
                                       'from sender was issued by a trusted '
                                       'CA:\n' + str(e))
+
+def _verify_trust_openssl_subprocess(config, certificates):
+    cmd = ['openssl', 'verify']
+    if config['ca_file'] is not None:
+        cmd.append('-CAfile')
+        cmd.append(config['ca_file'])
+    else:
+        cmd.append('-no-CAfile')
+
+    if config['ca_path'] is not None:
+        cmd.append('-CApath')
+        cmd.append(config['ca_path'])
+    else:
+        cmd.append('-no-CApath')
+
+    kwargs = {}
+    # Fully drop root privileges when running openssl
+    if os.getuid() == 0:
+        euid = os.geteuid()
+        if euid != 0:
+            kwargs['preexec_fn'] = lambda: os.setuid(euid)
+
+    intermediate_temp_file = None
+    intermediate_temp_file_name = None
+
+    try:
+        if len(certificates) > 1:
+            intermediate_temp_file = tempfile.NamedTemporaryFile(
+                mode='wt',
+                encoding='utf-8',
+                prefix='cert_receive_intermediate_',
+                suffix='.pem',
+                delete=False,
+            )
+            intermediate_temp_file_name = intermediate_temp_file.name
+
+            print(''.join(certificates[1:]), file=intermediate_temp_file)
+            intermediate_temp_file.flush()
+            intermediate_temp_file.close()
+            intermediate_temp_file = None
+
+            cmd.append('-untrusted')
+            cmd.append(intermediate_temp_file_name)
+
+        proc = subprocess.Popen(args=cmd,
+                                stdin=subprocess.PIPE,
+                                stdout=subprocess.PIPE,
+                                stderr=subprocess.STDOUT,
+                                **kwargs)
+        timedout = False
+        try:
+            output, _ = proc.communicate(input=certificates[0], timeout=15)
+        except subprocess.TimeoutExpired:
+            timedout = True
+            try:
+                os.kill(proc.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            output, _ = proc.communicate()
+
+        if proc.returncode != 0:
+            etype = BadConfigException
+            msgs = []
+            msgs.append('Error verifying certificate from sender was issued '
+                        'by a trusted CA:')
+            if timedout:
+                msgs.append('    "openssl verify" timed out and was killed.')
+            elif proc.returncode > 0:
+                etype = BadCertificateException
+                msgs.append('    "openssl verify" exited with return code {}.'
+                            .format(proc.returncode))
+            else:
+                msgs.append('    "openssl verify" died due to signal {}.'
+                            .format(-proc.returncode))
+            output = str(output, encoding='utf-8')
+            output = output.strip('\r\n')
+            if output:
+                msgs.append('>>>> OUTPUT >>>>')
+                msgs.append(output)
+                msgs.append('<<<<<<<<<<<<<<<<')
+            raise etype('\n'.join(msgs))
+
+    except OSError as e:
+        raise BadConfigException('Error verifying certificate from sender '
+                                 'was issued by a trusted CA:\n' + str(e))
+
+    finally:
+        if intermediate_temp_file is not None:
+            intermediate_temp_file.close()
+        if intermediate_temp_file_name is not None:
+            os.unlink(intermediate_temp_file_name)
+
+def verify_certificate_issued_by_trusted_ca(config, certificates, cert_objects):
+    if hasattr(ssl_crypto.X509Store, 'load_locations'):
+        _verify_trust_python(config, cert_objects)
+    else:
+        _verify_trust_openssl_subprocess(config, certificates)
 
 def perform_verifications(config, certificates, key, key_file_name):
     try:
@@ -536,8 +634,10 @@ def perform_verifications(config, certificates, key, key_file_name):
             verify_certificate_matches_key(cert_objects[0], key_object)
         cannot_reverse = True
 
-    #if config['verify_trusted_ca']:
-    #    verify_certificate_issued_by_trusted_ca(config, cert_objects)
+    if config['verify_trusted_ca']:
+        verify_certificate_issued_by_trusted_ca(config,
+                                                certificates,
+                                                cert_objects)
 
 def write_one_file(file_name, data, config, setting_prefix):
     with open(file_name, 'wb') as f:
