@@ -151,7 +151,7 @@ CFG_DEFAULT_SETTINGS = {
     'key_group':                'root',
     'key_owner':                'root',
     'key_perms':                '0600',
-    'reload_timeout':           110,
+    'reload_timeout':           50,
     'verify_chain':             True,
     'verify_loadable':          True,
     'verify_matching_key':      True,
