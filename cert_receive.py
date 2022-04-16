@@ -650,7 +650,7 @@ def install_files(config, certificates, key):
 
 def reload_service(config):
     proc = subprocess.Popen(
-        config['reload_command'],
+        args=config['reload_command'],
         stdin=subprocess.DEVNULL,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
