@@ -87,14 +87,13 @@ def reacquire_privileges():
 
 CFG_COMMENT_REGEX = re.compile(r'^#')
 
-def load_configuration():
+def load_configuration(config_in):
     '''
     Parses the configuration file and returns the parsed configuration.
     '''
     config_file_name = g_args.config_file
     try:
-        with open(config_file_name, 'rt') as config_file:
-           config = json.load(config_file)
+       config = json.load(config_in)
     except (IOError, JSONDecodeError) as e:
         action = 'parsing' if isinstance(e, JSONDecodeError) else 'reading'
         raise BadConfigException('Error {} configuration file "{}":\n{}'
@@ -678,9 +677,19 @@ def main():
     global g_args
     g_args = parser.parse_args()
 
-    drop_privileges()
+    try:
+        config_in = open(g_args.config_file, 'rt')
+    except IOError as e:
+        raise BadConfigException('Error opening configuration file "{}":\n{}'
+                                 .format(g_args.config_file, str(e)))
 
-    config = load_configuration()
+    try:
+        drop_privileges()
+
+        config = load_configuration(config_in)
+
+    finally:
+        config_in.close()
 
     if g_args.check_config:
         messages = []
