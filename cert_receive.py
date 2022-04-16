@@ -85,7 +85,7 @@ def reacquire_privileges():
     if g_args.set_effective_user is not None and os.geteuid() != 0:
         os.seteuid(0)
 
-CFG_COMMENT_REGEX = re.compile(r'^(comment|#)')
+CFG_COMMENT_REGEX = re.compile(r'^#')
 
 def load_configuration():
     '''
