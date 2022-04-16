@@ -172,8 +172,12 @@ CFG_TYPE_TO_JSON = {
 def check_configuration_section(name, section):
     '''
     Checks the validity of a single section from the configuration file.
-    Also sets default values for any settings that were not provided in
-    the configuration section.
+    Also sets default values for any settings that were not provided in the
+    configuration section.
+
+    Returns a 3-tuple consisting of: 1) a string indicating the overall
+    result of the configuration check, 2) a list of configuration errors,
+    and 3) a list of configuration warnings.
     '''
     errors = []
     warnings = []
@@ -270,7 +274,10 @@ def check_configuration_section(name, section):
     if errors:
         errors = ['    ' + x for x in errors]
         heading = 'Errors' if len(errors) > 1 else 'Error'
-    if heading is not None:
+    if heading is None:
+        heading = 'Configuration file "{}" section "{}" has no errors or ' \
+                  'warnings'.format(g_args.config_file, name)
+    else:
         heading = '{} in configuration file "{}" section "{}":' \
                   .format(heading, g_args.config_file, name)
 
