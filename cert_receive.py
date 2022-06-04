@@ -68,8 +68,8 @@ def resolve_group_name(group_name):
 
 def drop_privileges():
     '''
-    Temporarily drops root privileges when, configured to do so.  To be used
-    during parsing/validation steps, to reduce the surface are of any
+    Temporarily drops root privileges when configured to do so.  To be used
+    during parsing/validation steps, to reduce the surface area of any
     vulnerabilities that might exist in that processing.
     '''
     if g_args.set_effective_user is not None:
