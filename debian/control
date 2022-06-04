@@ -1,0 +1,13 @@
+Source: cclub-cert-propagation
+Section: admin
+Priority: optional
+Maintainer: Keith Bare <105995606+keithbare2@users.noreply.github.com>
+Build-Depends: debhelper (>= 11)
+Standards-Version: 4.1.3
+Homepage: https://github.com/cmucc/cert-propagation
+Vcs-Git: https://github.com/cmucc/cert-propagation.git
+
+Package: cclub-cert-propagation
+Architecture: all
+Depends: ${shlibs:Depends}, ${misc:Depends}, python3-pexpect, python3-openssl
+Description: Cclub tool for receiving and install SSL/TLS certificates
