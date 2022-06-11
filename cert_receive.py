@@ -505,13 +505,13 @@ def _verify_trust_python(config, cert_objects):
 
 def _verify_trust_openssl_subprocess(config, certificates):
     cmd = ['openssl', 'verify']
-    if config['ca_file'] is not None:
+    if 'ca_file' in config:
         cmd.append('-CAfile')
         cmd.append(config['ca_file'])
     else:
         cmd.append('-no-CAfile')
 
-    if config['ca_path'] is not None:
+    if 'ca_path' in config:
         cmd.append('-CApath')
         cmd.append(config['ca_path'])
     else:
