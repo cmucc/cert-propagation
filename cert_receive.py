@@ -556,7 +556,8 @@ def _verify_trust_openssl_subprocess(config, certificates):
                                 **kwargs)
         timedout = False
         try:
-            output, _ = proc.communicate(input=certificates[0], timeout=15)
+            output, _ = proc.communicate(input=certificates[0].encode(),
+                                         timeout=15)
         except subprocess.TimeoutExpired:
             timedout = True
             try:
