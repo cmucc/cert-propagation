@@ -522,7 +522,10 @@ def _verify_trust_openssl_subprocess(config, certificates):
     if os.getuid() == 0:
         euid = os.geteuid()
         if euid != 0:
-            kwargs['preexec_fn'] = lambda: os.setuid(euid)
+            def permanently_drop_privileges():
+                os.seteuid(0)
+                os.setuid(euid)
+            kwargs['preexec_fn'] = permanently_drop_privileges
 
     intermediate_temp_file = None
     intermediate_temp_file_name = None
