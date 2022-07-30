@@ -3,7 +3,7 @@
 set -e
 
 usage() {
-    echo "${0##*/} [--config-dir=DIR] [--config-file=FILE]" >&2
+    echo "usage: ${0##*/} [--config-dir=DIR] [--config-file=FILE]" >&2
     echo "    [--defaults-file=FILE | --no-defaults-file] [--dry-run]" >&2
 }
 
@@ -52,7 +52,7 @@ while [ $# -gt 0 ]; do
     -n|--dry-run)
         DRY_RUN=1
         ;;
-    --help)
+    -h|--help)
         usage
         exit 0
         ;;
