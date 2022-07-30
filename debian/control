@@ -7,7 +7,15 @@ Standards-Version: 4.1.3
 Homepage: https://github.com/cmucc/cert-propagation
 Vcs-Git: https://github.com/cmucc/cert-propagation.git
 
-Package: cclub-cert-propagation
+Package: cclub-cert-receive
 Architecture: all
 Depends: ${shlibs:Depends}, ${misc:Depends}, python3-pexpect, python3-openssl
-Description: Cclub tool for receiving and install SSL/TLS certificates
+Replaces: cclub-cert-propagation (<= 0.1)
+Breaks: cclub-cert-propagation (<= 0.1)
+Description: Cclub tool for receiving and installing SSL/TLS certificates
+
+Package: cclub-certbot-send
+Architecture: all
+Depends: openssh-client
+Enhances: certbot
+Description: Cclub Certbot deploy hook for pushing certificates to remote hosts
