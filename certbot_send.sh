@@ -49,7 +49,7 @@ while [ $# -gt 0 ]; do
     --no-defaults-file)
         NO_DEFAULTS_FILE=1
         ;;
-    --dry-run)
+    -n|--dry-run)
         DRY_RUN=1
         ;;
     --help)
@@ -60,7 +60,7 @@ while [ $# -gt 0 ]; do
         shift
         break
         ;;
-    --*)
+    -[^-]*|--[^-]*)
         echo "Error: unrecognized option: $1" >&2
         usage
         exit 1
@@ -97,6 +97,12 @@ while [ $# -gt 0 ]; do
 
     shift
 done
+
+if [ $# -ne 0 ]; then
+    echo "Error: too many arguments" >&2
+    usage
+    exit 1
+fi
 
 sequenced=
 if [ -z "$CONFIG_FILE" ]; then
