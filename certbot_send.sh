@@ -131,7 +131,13 @@ sshkey=
 timeout=90
 
 if [ -n "$DEFAULTS_FILE" ] && [ -f "$DEFAULTS_FILE" ]; then
+    if [ -n "$DRY_RUN" ]; then
+        echo "Using defaults file $DEFAULTS_FILE" >&2
+    fi
     . "$DEFAULTS_FILE"
+fi
+if [ -n "$DRY_RUN" ]; then
+    echo "Using config file $CONFIG_FILE" >&2
 fi
 . "$CONFIG_FILE"
 
@@ -153,25 +159,28 @@ done
 check_renewed_lineage
 
 if [ -n "$DRY_RUN" ]; then
-    exit 0
+    echo "Would execute the following commands:" >&2
 fi
 
 set -f
 
 failed=
+command="timeout -k \"\$((\$timeout + 10))\"  \"\$timeout\""\
+\ "ssh \${sshconfig:+-F \"\$sshconfig\"}"\
+\ "\${sshkey:+-o IdentityFile=\"\$sshkey\"} \"\$host\" cert_receive.py"
 for host in $hostname; do
+    if [ -n "$DRY_RUN" ]; then
+        eval "echo $command" >&2
+        continue
+    fi
     (printf '%s\n' "$CONFIG_NAME";
      exec cat "$RENEWED_LINEAGE/fullchain.pem" "$RENEWED_LINEAGE/privkey.pem") |
-        timeout -k $(($timeout + 10)) "$timeout" \
-            ssh ${sshconfig:+-F} ${sshconfig:+"$sshconfig"} \
-                ${sshkey:+-o} ${sshkey:+IdentityFile="$sshkey"} \
-                "$host" cert_receive.py || failed=1
+        eval "$command" || failed=1
 done
 
 set +f
 
 if [ -n "$failed" ]; then
     exit 1
-else
-    exit 0
 fi
+exit 0
