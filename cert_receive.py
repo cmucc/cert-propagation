@@ -851,8 +851,10 @@ def reload_service(config):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--ca-file')
+    parser.add_argument('--ca-file',
+                        metavar='FILE')
     parser.add_argument('--ca-path',
+                        metavar='PATH',
                         default=DEFAULT_CA_PATH)
     parser.add_argument('--no-ca-path',
                         dest='ca_path',
@@ -861,11 +863,14 @@ def main():
     parser.add_argument('--check-config',
                         action='store_true')
     parser.add_argument('--config-file',
+                        metavar='FILE',
                         default=DEFAULT_CONFIG_FILE)
     parser.add_argument('--receive-timeout',
+                        metavar='TIMEOUT',
                         type=int,
                         default=10)
     parser.add_argument('--set-effective-user',
+                        metavar='USER',
                         default='nobody')
     parser.add_argument('--no-set-effective-user',
                         dest='set_effective_user',
