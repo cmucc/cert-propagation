@@ -1,0 +1,22 @@
+.TH CERTBOT_SEND.SH "8" "July 2022" "certbot_send.sh 0.2" "System Manager's Manual"
+.SH NAME
+certbot_send.sh \- send an SSL/TLS certificate and key to remote host(s)
+.SH DESCRIPTION
+usage: certbot_send.sh [\-\-config\-dir=DIR] [\-\-config\-file=FILE]
+.IP
+[\-\-defaults\-file=FILE | \-\-no\-defaults\-file] [\-\-dry\-run]
+.SS "optional arguments:"
+.TP
+\fB\-\-config\-dir\fR=DIR
+.HP
+\fB\-\-config\-file\fR=FILE
+.HP
+\fB\-\-defaults\-file\fR=FILE
+.HP
+\fB\-\-no\-defaults\-file\fR
+.HP
+\fB-n\fR, \fB\-\-dry\-run\fR
+.SH ENVIRONMENT
+.IP RENEWED_LINEAGE
+The path to Certbot's ``live'' directory for the certificate and key to be
+sent.
