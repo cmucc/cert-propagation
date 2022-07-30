@@ -104,7 +104,6 @@ if [ $# -ne 0 ]; then
     exit 1
 fi
 
-sequenced=
 if [ -z "$CONFIG_FILE" ]; then
     check_renewed_lineage
     CONFIG_FILE="$CONFIG_DIR/$CONFIG_NAME.conf"
@@ -157,6 +156,8 @@ if [ -n "$DRY_RUN" ]; then
     exit 0
 fi
 
+set -f
+
 failed=
 for host in $hostname; do
     (printf '%s\n' "$CONFIG_NAME";
@@ -166,6 +167,8 @@ for host in $hostname; do
                 ${sshkey:+-o} ${sshkey:+IdentityFile="$sshkey"} \
                 "$host" cert_receive.py || failed=1
 done
+
+set +f
 
 if [ -n "$failed" ]; then
     exit 1
