@@ -1,3 +1,11 @@
+cclub-cert-propagation (0.2~wip1) UNRELEASED; urgency=medium
+
+  * Add a Debian package for certbot_send.sh.
+  * As a consequence, the existing package for cert_receive.py is renamed
+    from cclub-cert-propagation to cclub-cert-receive.
+
+ -- Keith Bare <105995606+keithbare2@users.noreply.github.com>  Sat, 30 Jul 2022 17:22:09 -0400
+
 cclub-cert-propagation (0.1) experimental; urgency=medium
 
   * Initial Release.

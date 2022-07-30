@@ -1,5 +1,7 @@
 /debian/.debhelper/
-/debian/cclub-cert-propagation.substvars
-/debian/cclub-cert-propagation/
+/debian/cclub-cert-receive.substvars
+/debian/cclub-cert-receive/
+/debian/cclub-certbot-send.substvars
+/debian/cclub-certbot-send/
 /debian/debhelper-build-stamp
 /debian/files
