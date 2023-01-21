@@ -139,7 +139,7 @@ CFG_VALID_SETTINGS = {
     'verify_loadable':          bool,
     'verify_matching_key':      bool,
     'verify_subject_cn':        bool,
-    'verify_times':             bool,
+    'verify_dates':             bool,
     'verify_trusted_ca':        bool,
 }
 
@@ -160,7 +160,7 @@ CFG_DEFAULT_SETTINGS = {
     'verify_loadable':          True,
     'verify_matching_key':      True,
     'verify_subject_cn':        True,
-    'verify_times':             True,
+    'verify_dates':             True,
     'verify_trusted_ca':        True,
 }
 
@@ -391,7 +391,7 @@ def verify_certificate_chain(cert_objects):
                                           'from sender')
         prior_issuer = cert_object.get_issuer()
 
-def verify_certificate_times(cert_objects):
+def verify_certificate_dates(cert_objects):
     '''
     Validates that the provided cert_objects are valid now.
 
@@ -634,8 +634,8 @@ def perform_verifications(config, certificates, key, key_file_name):
             verify_certificate_chain(cert_objects)
         cannot_reverse = True
 
-    if config['verify_times']:
-        verify_certificate_times(cert_objects)
+    if config['verify_dates']:
+        verify_certificate_dates(cert_objects)
 
     if config['verify_subject_cn']:
         expected_cn = config['expected_subject_cn']
