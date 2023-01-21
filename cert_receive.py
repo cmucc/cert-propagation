@@ -740,7 +740,7 @@ def install_files(config, certificates, key):
     tmpsuffix = '.new-{}'.format(os.getpid())
 
     old_umask = os.umask(0o077)
-    written = []
+    written_as_tmpfile = []
     backed_up = set()
     installed = []
     try:
@@ -754,21 +754,21 @@ def install_files(config, certificates, key):
             if thing == 'key' and config['bundle_key']:
                 file_name = config['certificate_path']
             if data and file_name:
-                written.append((file_name, data))
+                written_as_tmpfile.append((file_name, data))
                 write_one_file(file_name + tmpsuffix, data, config, prefix)
 
-        for file_name, data in written:
+        for file_name, data in written_as_tmpfile:
             if backup_one_file(file_name, data, file_name + '.bak'):
                 backed_up.add(file_name)
 
-        while written:
-            file_name, _ = written[-1]
+        while written_as_tmpfile:
+            file_name, _ = written_as_tmpfile[-1]
             os.rename(file_name + tmpsuffix, file_name)
-            installed.append(written.pop())
+            installed.append(written_as_tmpfile.pop())
 
     except OSError as e:
         recovered = True
-        for tmpfile in [x + tmpsuffix for x in written]:
+        for tmpfile in [x + tmpsuffix for x in written_as_tmpfile]:
             try:
                 os.unlink(tmpfile)
             except OSError:
