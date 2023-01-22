@@ -615,38 +615,48 @@ def verify_certificate_issued_by_trusted_ca(config, certificates, cert_objects):
         _verify_trust_openssl_subprocess(config, certificates)
 
 def perform_verifications(config, certificates, key, key_file_name):
-    try:
-        cert_objects = [ssl_crypto.load_certificate(
-                                ssl_crypto.FILETYPE_PEM, x.encode())
-                        for x in certificates]
-    except ssl_crypto.Error as e:
-        raise BadCertificateException('Error loading a certificate from '
-                                      'sender:\n' + str(e))
+    cert_object_storage = []
+    def get_cert_objects():
+        """
+        Helper for lazily parsing/loading the certificates.  If no
+        verifications are configured, that work is avoided.
+        """
+        nonlocal cert_object_storage
+        if not cert_object_storage:
+            try:
+                cert_object_storage = [ssl_crypto.load_certificate(
+                                               ssl_crypto.FILETYPE_PEM,
+                                               x.encode())
+                                       for x in certificates]
+            except ssl_crypto.Error as e:
+                raise BadCertificateException('Error loading a certificate '
+                                              'from sender:\n' + str(e))
+        return cert_object_storage
 
     cannot_reverse = False
 
     if config['verify_chain']:
         try:
-            verify_certificate_chain(cert_objects)
+            verify_certificate_chain(get_cert_objects())
         except BadCertificateException:
             certificates.reverse()
-            cert_objects.reverse()
-            verify_certificate_chain(cert_objects)
+            get_cert_objects().reverse()
+            verify_certificate_chain(get_cert_objects())
         cannot_reverse = True
 
     if config['verify_dates']:
-        verify_certificate_dates(cert_objects)
+        verify_certificate_dates(get_cert_objects())
 
     if config['verify_subject_cn']:
         expected_cn = config['expected_subject_cn']
         try:
-            verify_certificate_subject_cn(cert_objects[0], expected_cn)
+            verify_certificate_subject_cn(get_cert_objects()[0], expected_cn)
         except BadCertificateException as e:
             if cannot_reverse:
                 raise e
             certificates.reverse()
-            cert_objects.reverse()
-            verify_certificate_subject_cn(cert_objects[0], expected_cn)
+            get_cert_objects().reverse()
+            verify_certificate_subject_cn(get_cert_objects()[0], expected_cn)
         cannot_reverse = True
 
     if config['verify_matching_key'] and key is None:
@@ -669,19 +679,19 @@ def perform_verifications(config, certificates, key, key_file_name):
 
     if config['verify_matching_key']:
         try:
-            verify_certificate_matches_key(cert_objects[0], key_object)
+            verify_certificate_matches_key(get_cert_objects()[0], key_object)
         except BadCertificateException as e:
             if cannot_reverse:
                 raise e
             certificates.reverse()
-            cert_objects.reverse()
-            verify_certificate_matches_key(cert_objects[0], key_object)
+            get_cert_objects().reverse()
+            verify_certificate_matches_key(get_cert_objects()[0], key_object)
         cannot_reverse = True
 
     if config['verify_trusted_ca']:
         verify_certificate_issued_by_trusted_ca(config,
                                                 certificates,
-                                                cert_objects)
+                                                get_cert_objects())
 
 def write_one_file(file_name, data, config, setting_prefix):
     with open(file_name, 'wb') as f:
@@ -902,8 +912,7 @@ def main():
         raise BadConfigException('Error, received a private key from sender, '
                                  'but no destination for it is configured',)
 
-    if [x for x in config if x.startswith('verify_') and config[x]]:
-        perform_verifications(config, certificates, key, key_file_name)
+    perform_verifications(config, certificates, key, key_file_name)
 
     reacquire_privileges()
 
