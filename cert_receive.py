@@ -3,11 +3,7 @@
 import argparse
 import grp
 import json
-import OpenSSL.SSL as ssl
-import OpenSSL.crypto as ssl_crypto
 import os
-import pexpect
-import pexpect.fdpexpect
 import pwd
 import re
 import signal
@@ -16,6 +12,11 @@ import subprocess
 import sys
 import tempfile
 import time
+
+import OpenSSL.SSL as ssl
+import OpenSSL.crypto as ssl_crypto
+import pexpect
+import pexpect.fdpexpect
 
 DEFAULT_CA_PATH = '/etc/ssl/certs'
 DEFAULT_CONFIG_FILE = '/etc/cert_receive.json'
@@ -60,7 +61,7 @@ def resolve_group_name(group_name):
         grent = grp.getgrnam(group_name)
         return grent.gr_gid
     except KeyError as e:
-        if group_name == 'root' or group_name == 'wheel':
+        if group_name in ('root', 'wheel'):
             return 0
         if not group_name.isdecimal():
             raise e
@@ -94,9 +95,9 @@ def load_configuration(config_in):
     '''
     config_file_name = g_args.config_file
     try:
-       config = json.load(config_in)
-    except (IOError, JSONDecodeError) as e:
-        action = 'parsing' if isinstance(e, JSONDecodeError) else 'reading'
+        config = json.load(config_in)
+    except (IOError, json.JSONDecodeError) as e:
+        action = 'parsing' if isinstance(e, json.JSONDecodeError) else 'reading'
         raise BadConfigException('Error {} configuration file "{}":\n{}'
                                  .format(action, config_file_name, str(e)))
 
@@ -194,7 +195,7 @@ def check_configuration_section(name, section):
             expected_type = str
         if not isinstance(parsed, expected_type):
             errors.append('{} should be a JSON {}'
-                          .format(what, CFG_TYPE_TO_JSON(expected_type)))
+                          .format(what, CFG_TYPE_TO_JSON[expected_type]))
             return False
         if isinstance(expected, frozenset) and parsed not in expected:
             errors.append('{} should be one of: {}'.format(what, expected))
@@ -324,7 +325,7 @@ def interact_with_sender(full_config):
         if errors:
             print('Error in configuration')
             raise BadConfigException('\n'.join([header] + errors + warnings))
-        elif warnings:
+        if warnings:
             print('\n'.join([header] + warnings), file=sys.stderr)
 
         certificates = []
@@ -498,7 +499,7 @@ def _verify_trust_python(config, cert_objects):
     ctx = ssl_crypto.X509StoreContext(store, cert_objects[0], cert_objects[1:])
     try:
         ctx.verify_certificate()
-    except ssl_crypt.X509StoreContextError as e:
+    except ssl_crypto.X509StoreContextError as e:
         raise BadCertificateException('Error, could not verify certificate '
                                       'from sender was issued by a trusted '
                                       'CA:\n' + str(e))
@@ -899,7 +900,7 @@ def main():
                 messages.extend([header] + errors + warnings)
         if had_errors:
             raise BadConfigException('\n'.join(messages))
-        elif messages:
+        if messages:
             print('\n'.join(messages), file=sys.stderr)
         return
 
