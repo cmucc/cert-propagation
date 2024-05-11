@@ -112,3 +112,21 @@ class TestVerifications:
 
         with pytest.raises(cr.BadCertificateException):
             cr.verify_certificate_dates(certs)
+
+    def test_verify_certificate_subject_cn_positive(self):
+        dn = [(b'C', b'US'), (b'ST', b'Pennsylvania'), (b'L', b'Cranberry Twp'),
+              (b'O', 'Cranberry Melon College'), (b'OU', 'Confection Club'),
+              (b'CN', b'candy.cranmel.college')]
+        cert = Mock()
+        cert.get_subject.return_value.get_components.return_value = dn
+
+        # Would raise an exception if the CN was considered a mismatch
+        cr.verify_certificate_subject_cn(cert, 'candy.cranmel.college')
+
+    def test_verify_certificate_subject_cn_negative(self):
+        dn = [(b'OU', 'Robot Fanclub'), (b'CN', b'Evil Robot')]
+        cert = Mock()
+        cert.get_subject.return_value.get_components.return_value = dn
+
+        with pytest.raises(cr.BadCertificateException):
+            cr.verify_certificate_subject_cn(cert, 'Friendly Robot')
