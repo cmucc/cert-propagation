@@ -134,6 +134,7 @@ CFG_VALID_SETTINGS = {
     'key_owner':                str,
     'key_path':                 str,
     'key_perms':                str,
+    'openssl_ciphers':          str,
     'reload_command':           str,
     'reload_timeout':           int,
     'verify_chain':             bool,
@@ -470,7 +471,7 @@ def read_key_from_file(key_file_name):
                               'key in the configured key file')
     return match.group(0)
 
-def verify_certificate_matches_key(cert_object, key_object):
+def verify_certificate_matches_key(config, cert_object, key_object):
     '''
     Validates that the public key associated with cert_object and private
     key associated with key_object are a matching pair.
@@ -482,6 +483,8 @@ def verify_certificate_matches_key(cert_object, key_object):
         if method is not None:
             break
     ctx = ssl.Context(method)
+    if 'openssl_ciphers' in config:
+        ctx.set_cipher_list(config['openssl_ciphers'].encode())
     ctx.use_certificate(cert_object)
     ctx.use_privatekey(key_object)
     try:
@@ -680,13 +683,17 @@ def perform_verifications(config, certificates, key, key_file_name):
 
     if config['verify_matching_key']:
         try:
-            verify_certificate_matches_key(get_cert_objects()[0], key_object)
+            verify_certificate_matches_key(config,
+                                           get_cert_objects()[0],
+                                           key_object)
         except BadCertificateException as e:
             if cannot_reverse:
                 raise e
             certificates.reverse()
             get_cert_objects().reverse()
-            verify_certificate_matches_key(get_cert_objects()[0], key_object)
+            verify_certificate_matches_key(config,
+                                           get_cert_objects()[0],
+                                           key_object)
         cannot_reverse = True
 
     if config['verify_trusted_ca']:
