@@ -486,12 +486,27 @@ def verify_certificate_matches_key(config, cert_object, key_object):
     if 'openssl_ciphers' in config:
         ctx.set_cipher_list(config['openssl_ciphers'].encode())
     ctx.use_certificate(cert_object)
-    ctx.use_privatekey(key_object)
     try:
+        ctx.use_privatekey(key_object)
         ctx.check_privatekey()
-    except ssl.Error:
-        raise BadCertificateException('Error, certficate from sender does '
-                                      'not match private key')
+    except ssl.Error as e:
+        try:
+            # Yuck, there's not a good way to programmatically examine the
+            # error reason.
+            # Exception's args attribute is a tuple of arguments.
+            # For OpenSSL.SSL.Error, the args tuple has one argument, a list
+            # of (lib, function, reason) string-triples.
+            # If the args are in the expected form and the list has exactly
+            # one element indicating a key mismatch, we'll indicate our
+            # verification failed.  Otherwise we'll re-raise the exception
+            # from OpenSSL.
+            if (len(e.args[0]) == 1 and
+                    re.search(r'\bkey\b.*\b(mis)?match\b', e.args[0][0][2])):
+                raise BadCertificateException('Error, certficate from sender '
+                                              'does not match private key')
+        except TypeError:
+            pass
+        raise
 
 def _verify_trust_python(config, cert_objects):
     store = ssl_crypto.X509Store()
