@@ -1,3 +1,4 @@
+__pycache__/
 /debian/.debhelper/
 /debian/cclub-cert-receive.substvars
 /debian/cclub-cert-receive/
