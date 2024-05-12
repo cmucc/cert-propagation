@@ -127,3 +127,27 @@ class TestVerifications:
 
         with pytest.raises(cr.BadCertificateException):
             cr.verify_certificate_subject_cn(cert, 'Friendly Robot')
+
+    def test_verify_certificate_matches_key_positive_1(self):
+        # Would raise an exception on mismatch
+        cr.verify_certificate_matches_key(self.get_config(),
+                                          self.get_cert(key_num=1),
+                                          self.get_key(key_num=1))
+
+    def test_verify_certificate_matches_key_positive_2(self):
+        # Would raise an exception on mismatch
+        cr.verify_certificate_matches_key(self.get_config(),
+                                          self.get_cert(ca_num=1, key_num=2),
+                                          self.get_key(key_num=2))
+
+    def test_verify_certificate_matches_key_negative_1(self):
+        with pytest.raises(cr.BadCertificateException):
+            cr.verify_certificate_matches_key(self.get_config(),
+                                              self.get_cert(ca_num=2),
+                                              self.get_key(key_num=1))
+
+    def test_verify_certificate_matches_key_negative_2(self):
+        with pytest.raises(cr.BadCertificateException):
+            cr.verify_certificate_matches_key(self.get_config(),
+                                              self.get_cert(ca_num=2, key_num=1),
+                                              self.get_key(key_num=2))
