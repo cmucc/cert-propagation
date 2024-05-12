@@ -4,6 +4,7 @@ from unittest.mock import Mock
 
 import cert_receive as cr
 
+@pytest.mark.usefixtures('certificate_helper')
 class TestVerifications:
     def test_verify_certificate_chain_positive(self):
         chain = [Mock() for _ in range(0, 2)]
@@ -48,10 +49,6 @@ class TestVerifications:
 
         with pytest.raises(cr.BadCertificateException):
             cr.verify_certificate_chain(chain)
-
-    @staticmethod
-    def datetime_to_asn1(dt):
-        return dt.strftime('%Y%m%d%H%M%SZ').encode()
 
     def test_verify_certificate_dates_positive(self):
         to_asn1 = self.datetime_to_asn1
