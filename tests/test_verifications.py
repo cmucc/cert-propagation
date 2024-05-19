@@ -1,5 +1,7 @@
 from datetime import datetime, timedelta
+import OpenSSL.crypto as ssl_crypto
 import pytest
+import subprocess
 from unittest.mock import Mock
 
 import cert_receive as cr
@@ -151,3 +153,78 @@ class TestVerifications:
             cr.verify_certificate_matches_key(self.get_config(),
                                               self.get_cert(ca_num=2, key_num=1),
                                               self.get_key(key_num=2))
+
+    foreach_verifier = pytest.mark.parametrize(
+        'verifier',
+        [
+            pytest.param(cr._verify_trust_python,
+                         id='python',
+                         marks=pytest.mark.skipif(
+                             not hasattr(ssl_crypto.X509Store, 'load_locations'),
+                             reason=('the available pyOpenSSL module does not '
+                                     'allow CA store configuration'))),
+            pytest.param(lambda config, cert_objects:
+                             cr._verify_trust_openssl_subprocess(
+                                 config,
+                                 [ssl_crypto.dump_certificate(
+                                      ssl_crypto.FILETYPE_PEM,
+                                      cert_object).decode()
+                                 for cert_object in cert_objects]),
+                        id='subprocess'),
+        ]
+    )
+
+    def write_ca_file(self, ca_nums, path):
+        path = path / 'CA_bundle.pem'
+        cadata = b''.join([ssl_crypto.dump_certificate(
+                               ssl_crypto.FILETYPE_PEM,
+                               self.get_cert(ca_num=ca_num))
+                           for ca_num in ca_nums])
+        with open(str(path), 'wb') as fd:
+            fd.write(cadata)
+        return str(path)
+
+    def write_ca_directory(self, ca_nums, path):
+        for ca_num in ca_nums:
+            filename = path / 'CA{}.pem'.format(ca_num)
+            cadata = ssl_crypto.dump_certificate(ssl_crypto.FILETYPE_PEM,
+                                                 self.get_cert(ca_num=ca_num))
+            with open(str(filename), 'wb') as fd:
+                fd.write(cadata)
+        subprocess.check_call(['c_rehash', '-v', str(path)])
+        return str(path)
+
+    @foreach_verifier
+    def test_verify_trust_cafile_ca_signed_positive(self, verifier, tmp_path):
+        config = self.get_config()
+        config['ca_file'] = self.write_ca_file([1, 2], tmp_path)
+        # Would raise an exception if trust could not be verified
+        verifier(config, [self.get_cert(ca_num=1, key_num=2)])
+        verifier(config, [self.get_cert(ca_num=1, key_num=3)])
+        verifier(config, [self.get_cert(ca_num=2, key_num=1)])
+
+    @foreach_verifier
+    def test_verify_trust_capath_ca_signed_positive(self, verifier, tmp_path):
+        config = self.get_config()
+        config['ca_path'] = self.write_ca_directory([2, 3], tmp_path)
+        # Would raise an exception if trust could not be verified
+        verifier(config, [self.get_cert(ca_num=2, key_num=1)])
+        verifier(config, [self.get_cert(ca_num=3, key_num=1)])
+
+    @foreach_verifier
+    def test_verify_trust_cafile_negative(self, verifier, tmp_path):
+        config = self.get_config()
+        config['ca_file'] = self.write_ca_file([3], tmp_path)
+        with pytest.raises(cr.BadCertificateException):
+            verifier(config, [self.get_cert(ca_num=1, key_num=3)])
+        with pytest.raises(cr.BadCertificateException):
+            verifier(config, [self.get_cert(ca_num=2, key_num=1)])
+
+    @foreach_verifier
+    def test_verify_trust_capath_negative(self, verifier, tmp_path):
+        config = self.get_config()
+        config['ca_path'] = self.write_ca_directory([1, 2], tmp_path)
+        with pytest.raises(cr.BadCertificateException):
+            verifier(config, [self.get_cert(ca_num=3, key_num=1)])
+        with pytest.raises(cr.BadCertificateException):
+            verifier(config, [self.get_cert(ca_num=3, key_num=2)])
