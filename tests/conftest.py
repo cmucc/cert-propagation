@@ -8,7 +8,7 @@ import pytest
 def certificate_helper_per_session():
     datadir = os.path.join(os.path.split(__file__)[0], 'data')
     keys = {}
-    CertArgs = namedtuple('CertArgs', ['ca_num', 'key_num'])
+    CertArgs = namedtuple('CertArgs', ['ca_num', 'intermediate_num', 'key_num'])
     certs = {}
 
     class CertificateHelper:
@@ -32,29 +32,58 @@ def certificate_helper_per_session():
             return keys[key_num]
 
         @classmethod
-        def get_cert(cls, ca_num=None, key_num=None):
-            cert_args = CertArgs(ca_num=ca_num, key_num=key_num)
+        def get_cert(cls, ca_num=None, intermediate_num=None, key_num=None):
+            cert_args = CertArgs(ca_num, intermediate_num, key_num)
             if cert_args not in certs:
-                if ca_num is not None and key_num is None:
+                bitvector = [1 if arg is not None else 0 for arg in cert_args]
+                if bitvector == [1, 0, 0]:
                     is_ca = 'CA:TRUE'
                     subject = 'CA Certificate {}'.format(ca_num)
                     pubkey = cls.get_key(ca_num)
                     issuer = subject
                     signkey = pubkey
-                elif ca_num is not None and key_num is not None:
+                elif bitvector == [1, 1, 0]:
+                    is_ca = 'CA:FALSE'
+                    subject = 'Intermediate Certificate {}'.format(intermediate_num)
+                    pubkey = cls.get_key(intermediate_num)
+                    issuer = 'CA Certificate {}'.format(ca_num)
+                    signkey = cls.get_key(ca_num)
+                elif bitvector == [1, 0, 1]:
                     is_ca = 'CA:FALSE'
                     subject = 'CA-signed Certificate {}'.format(key_num)
                     pubkey = cls.get_key(key_num)
                     issuer = 'CA Certificate {}'.format(ca_num)
                     signkey = cls.get_key(ca_num)
-                elif ca_num is None and key_num is not None:
+                elif bitvector == [0, 1, 0]:
+                    try:
+                        issuer_num, subject_num = intermediate_num
+                    except ValueError as e:
+                        raise ValueError(
+                            'Inappropriate arguments. If an intermediate_num '
+                            'is provided alone, it must be a sequence of length 2.'
+                        ) from e
+                    is_ca = 'CA:FALSE'
+                    subject = 'Intermediate Certificate {}'.format(subject_num)
+                    pubkey = cls.get_key(subject_num)
+                    issuer = 'Intermediate Certificate {}'.format(issuer_num)
+                    signkey = cls.get_key(issuer_num)
+                elif bitvector == [0, 1, 1]:
+                    is_ca = 'CA:FALSE'
+                    subject = 'Intermediate-signed Certificate {}'.format(key_num)
+                    pubkey = cls.get_key(key_num)
+                    issuer = 'Intermediate Certificate {}'.format(intermediate_num)
+                    signkey = cls.get_key(intermediate_num)
+                elif bitvector == [0, 0, 1]:
                     is_ca = 'CA:FALSE'
                     subject = 'Self-signed Certificate {}'.format(key_num)
                     pubkey = cls.get_key(key_num)
                     issuer = subject
                     signkey = pubkey
                 else:
-                    raise ValueError('Must specify one of ca_num or key_num')
+                    raise ValueError(
+                        'Inappropriate arguments. Values must be provided for '
+                        'one or two of ca_num, intermediate_num, or key_num.'
+                    )
 
                 cert = ssl_crypto.X509()
                 cert.set_version(2) # the value 2 represents version 3
