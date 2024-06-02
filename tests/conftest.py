@@ -111,3 +111,9 @@ def certificate_helper(request, certificate_helper_per_session):
         if not attr_name.startswith('_'):
             method = getattr(certificate_helper_per_session, attr_name)
             setattr(request.cls, attr_name, staticmethod(method))
+
+@pytest.fixture(scope='function')
+def clear_umask():
+    old_umask = os.umask(0o000)
+    yield
+    os.umask(old_umask)
