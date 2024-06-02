@@ -56,3 +56,46 @@ class TestInstallation:
         assert path.exists()
         st = path.lstat()
         assert stat.S_IMODE(st.st_mode) == 0o664
+
+    require_root = pytest.mark.skipif(
+        os.geteuid() != 0,
+        reason='Tests verifying installation with a specific owner or group '
+               'typically only work if run under fakeroot, which is preferred, '
+               'or as root'
+    )
+
+    @require_root
+    @pytest.mark.parametrize('what', ['certificate', 'key'])
+    def test_write_one_file_uid(self, what, tmp_path):
+        config = {
+            'certificate_path': str(tmp_path / 'service.crt'),
+            'certificate_owner': '#720',
+            'key_path': str(tmp_path / 'service.key'),
+            'key_owner': '#864',
+        }
+        self.add_defaults_and_process_config(config)
+        path = tmp_path / what
+        data = what + ' whatever'
+        cr.write_one_file(str(path), data, config, what + '_')
+        assert path.exists()
+        st = path.lstat()
+        desired_owner_uid = 720 if what == 'certificate' else 864
+        assert st.st_uid == desired_owner_uid
+
+    @require_root
+    @pytest.mark.parametrize('what', ['certificate', 'key'])
+    def test_write_one_file_gid(self, what, tmp_path):
+        config = {
+            'certificate_path': str(tmp_path / 'certificate.pem'),
+            'certificate_group': '#40',
+            'key_path': str(tmp_path / 'key.pem'),
+            'key_group': '#17',
+        }
+        self.add_defaults_and_process_config(config)
+        path = tmp_path / what
+        data = 'in reality this would contain a ' + what
+        cr.write_one_file(str(path), data, config, what + '_')
+        assert path.exists()
+        st = path.lstat()
+        desired_gid = 40 if what == 'certificate' else 17
+        assert st.st_gid == desired_gid
