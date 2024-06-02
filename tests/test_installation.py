@@ -24,6 +24,27 @@ class TestInstallation:
                                      header] +
                                     errors + warnings)
 
+    @pytest.mark.parametrize('what', ['certificate', 'key'])
+    def test_write_one_file_basic(self, what, tmp_path):
+        config = {
+            'certificate_path': str(tmp_path / 'certificate'),
+            'key_path': str(tmp_path / 'key'),
+        }
+        self.add_defaults_and_process_config(config)
+        data = ' '.join(['the {}'.format(what)] * 5)
+        cr.write_one_file(str(tmp_path / what), data, config, what + '_')
+        for check in ['certificate', 'key']:
+            path = tmp_path / check
+            if check == what:
+                assert path.exists()
+            else:
+                assert not path.exists()
+        path = tmp_path / what
+        st = path.lstat()
+        assert stat.S_ISREG(st.st_mode)
+        with open(str(path), 'rt') as fd:
+            assert fd.read() == data
+
     @pytest.mark.usefixtures('clear_umask')
     @pytest.mark.parametrize('what', ['certificate', 'key'])
     def test_write_one_file_perms(self, what, tmp_path):
