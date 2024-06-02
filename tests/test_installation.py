@@ -1,4 +1,6 @@
+import grp
 import os
+import pwd
 import pytest
 import stat
 from unittest.mock import patch
@@ -104,6 +106,30 @@ class TestInstallation:
         assert st.st_uid == desired_owner_uid
 
     @require_root
+    def test_write_one_file_user_name(self, tmp_path):
+        # Hopefully one of these will exist on any system.
+        for user_name in ['daemon', 'bin', 'man', 'games']:
+            try:
+                pwent = pwd.getpwnam(user_name)
+                uid = pwent.pw_uid
+            except KeyError:
+                pass
+        else:
+            pytest.mark.xfail('Could not find a user name to test with')
+        path = tmp_path / 'my_certificate.pem'
+        config = {
+            'certificate_path': str(path),
+            'certificate_owner': user_name,
+        }
+        self.add_defaults_and_process_config(config)
+        data = 'this would normally be a PEM-encoded certificate'
+        cr.write_one_file(str(path), data, config, 'certificate_')
+        assert path.exists()
+        assert path.owner() == user_name
+        st = path.lstat()
+        assert st.st_uid == uid
+
+    @require_root
     @pytest.mark.parametrize('what', ['certificate', 'key'])
     def test_write_one_file_gid(self, what, tmp_path):
         config = {
@@ -120,3 +146,28 @@ class TestInstallation:
         st = path.lstat()
         desired_gid = 40 if what == 'certificate' else 17
         assert st.st_gid == desired_gid
+
+    @require_root
+    def test_write_one_file_group_name(self, tmp_path):
+        # Hopefully one of these will exist on any system.
+        for group_name in ['adm', 'staff', 'mail']:
+            try:
+                grent = grp.getgrnam(group_name)
+                gid = grent.gr_gid
+            except KeyError:
+                pass
+        else:
+            pytest.mark.xfail('Could not find a group name to test with')
+        path = tmp_path / 'my_private_key.pem'
+        config = {
+            'certificate_path': 'dummy',
+            'key_path': str(path),
+            'key_group': group_name,
+        }
+        self.add_defaults_and_process_config(config)
+        data = 'not actually a PEM-encoded private key'
+        cr.write_one_file(str(path), data, config, 'key_')
+        assert path.exists()
+        assert path.group() == group_name
+        st = path.lstat()
+        assert st.st_gid == gid
