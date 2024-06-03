@@ -3,6 +3,7 @@ import os
 import pwd
 import pytest
 import stat
+import time
 from unittest.mock import patch
 
 import cert_receive as cr
@@ -171,3 +172,61 @@ class TestInstallation:
         assert path.group() == group_name
         st = path.lstat()
         assert st.st_gid == gid
+
+    def test_backup_one_file_no_existing(self, tmp_path):
+        path = tmp_path / 'important'
+        backup = path.with_name(path.name + '.bak')
+        data = 'howdy, howdy, howdy!'
+        result = cr.backup_one_file(str(path), data, str(backup))
+        assert not result
+        assert not path.exists()
+        assert not backup.exists()
+
+    def test_backup_one_file_existing_same_data(self, tmp_path):
+        path = tmp_path / 'stuff'
+        backup = path.with_name(path.name + '~')
+        data = 'To be or not to be, that is the question.\n'
+        with open(str(path), 'wt') as fd:
+            fd.write(data)
+        result = cr.backup_one_file(str(path), data, str(backup))
+        assert not result
+        assert path.exists()
+        assert not backup.exists()
+
+    @pytest.mark.usefixtures('clear_umask')
+    def test_backup_one_file_basic(self, tmp_path):
+        path = tmp_path / 'cert.pem'
+        backup = path.with_name(path.name + '.old')
+        old_data = 'Junk'
+        data = 'Refreshed Junk'
+        with open(str(path), 'wt') as fd:
+            os.chmod(fd.fileno(), 0o604)
+            fd.write(old_data)
+            fd.flush()
+            old_time = time.time() - 2
+            os.utime(fd.fileno(), times=(old_time, old_time))
+            old_time = os.stat(fd.fileno()).st_mtime_ns
+        result = cr.backup_one_file(str(path), data, str(backup))
+        assert result
+        assert path.exists()
+        assert backup.exists()
+        st = backup.lstat()
+        assert stat.S_IMODE(st.st_mode) == 0o604
+        assert st.st_mtime_ns == old_time
+
+    @require_root
+    def test_backup_one_file_preserves_owner_and_group(self, tmp_path):
+        path = tmp_path / 'key.pem'
+        backup = path.with_name(path.name + '.1')
+        old_data = 'Old, old, old'
+        data = 'Up to date'
+        with open(str(path), 'wt') as fd:
+            os.chown(fd.fileno(), 1711, 91)
+            fd.write(old_data)
+        result = cr.backup_one_file(str(path), data, str(backup))
+        assert result
+        assert path.exists()
+        assert backup.exists()
+        st = backup.lstat()
+        assert st.st_uid == 1711
+        assert st.st_gid == 91
