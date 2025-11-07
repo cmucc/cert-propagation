@@ -778,7 +778,7 @@ def install_files(config, certificates, key):
 
     old_umask = os.umask(0o077)
     written_as_tmpfile = []
-    backed_up = set()
+    backed_up = {}
     installed = []
     try:
         for thing, prefix in (
@@ -795,8 +795,8 @@ def install_files(config, certificates, key):
                 write_one_file(file_name + tmpsuffix, data, config, prefix)
 
         for file_name, data in written_as_tmpfile:
-            if backup_one_file(file_name, data, file_name + '.bak') is BACKUP_SUCCESS:
-                backed_up.add(file_name)
+            backup_state = backup_one_file(file_name, data, file_name + '.bak')
+            backed_up[file_name] = backup_state
 
         while written_as_tmpfile:
             file_name, _ = written_as_tmpfile[-1]
@@ -813,9 +813,10 @@ def install_files(config, certificates, key):
 
         for file_name in installed:
             try:
-                if file_name in backed_up:
+                backup_state = backed_up.get(file_name)
+                if backup_state is BACKUP_SUCCESS:
                     os.rename(file_name + '.bak', file_name)
-                else:
+                elif backup_state is BACKUP_NOEXIST:
                     os.unlink(file_name)
             except OSError:
                 recovered = False
