@@ -230,3 +230,102 @@ class TestInstallation:
         st = backup.lstat()
         assert st.st_uid == 1711
         assert st.st_gid == 91
+
+    SENTINEL = object()
+
+    @classmethod
+    def prepare_install_files(cls, tmp_path, config):
+        paths = [
+            ('certificate', tmp_path / 'cert'),
+            ('intermediate', tmp_path / 'chain'),
+            ('key', tmp_path / 'key'),
+        ]
+        for what, path in paths:
+            key = what + '_path'
+            exist = config.get(key, cls.SENTINEL)
+            if exist is cls.SENTINEL:
+                config[key] = str(path)
+            elif exist is None:
+                del config[key]
+        cls.add_defaults_and_process_config(config)
+        return (x[1] for x in paths)
+
+    def test_install_files_default(self, tmp_path):
+        config = {}
+        cert, chain, key = self.prepare_install_files(tmp_path, config)
+        certs_data = ['application\n', 'intermediate1\n', 'intermediate2\n']
+        key_data = 'secret!\n'
+        cr.install_files(config, certs_data, key_data)
+        assert cert.read_text() == 'application\n'
+        assert chain.read_text() == 'intermediate1\nintermediate2\n'
+        assert key.read_text() == 'secret!\n'
+
+    def test_install_files_revchain(self, tmp_path):
+        config = {
+            'intermediate_order': 'ca_first',
+        }
+        cert, chain, key = self.prepare_install_files(tmp_path, config)
+        certs_data = ['1\n', '2\n', '3\n', '4\n']
+        key_data = '!\n'
+        cr.install_files(config, certs_data, key_data)
+        assert cert.read_text() == '1\n'
+        assert chain.read_text() == '4\n3\n2\n'
+        assert key.read_text() == '!\n'
+
+    def test_install_files_fullchain(self, tmp_path):
+        config = {
+            'bundle_intermediate': True,
+            'intermediate_path': None,
+        }
+        cert, chain, key = self.prepare_install_files(tmp_path, config)
+        certs_data = ['app\n', 'snoopy\n', 'charlie\n']
+        key_data = 'password\n'
+        cr.install_files(config, certs_data, key_data)
+        assert cert.read_text() == 'app\nsnoopy\ncharlie\n'
+        assert not chain.exists()
+        assert key.read_text() == 'password\n'
+
+    def test_install_files_revfullchain(self, tmp_path):
+        config = {
+            'bundle_intermediate': True,
+            'intermediate_order': 'ca_first',
+            'intermediate_path': None,
+        }
+        cert, chain, key = self.prepare_install_files(tmp_path, config)
+        certs_data = ['leaf\n', 'branch1\n', 'branch2\n', 'root\n']
+        key_data = 'Maple\n'
+        cr.install_files(config, certs_data, key_data)
+        assert cert.read_text() == 'root\nbranch2\nbranch1\nleaf\n'
+        assert not chain.exists()
+        assert key.read_text() == 'Maple\n'
+
+    def test_install_files_all_bundled(self, tmp_path):
+        config = {
+            'bundle_intermediate': True,
+            'bundle_key': True,
+            'intermediate_path': None,
+        }
+        cert, chain, key = self.prepare_install_files(tmp_path, config)
+        certs_data = ['hughey\n', 'dewey\n', 'louis\n', 'scrooge\n']
+        key_data = '$$$$\n'
+        cr.install_files(config, certs_data, key_data)
+        assert cert.read_text() == '$$$$\nhughey\ndewey\nlouis\nscrooge\n'
+        st = cert.lstat()
+        assert stat.S_IMODE(st.st_mode) & 0o077 == 0
+        assert not chain.exists()
+        assert not key.exists()
+
+    def test_install_files_nochain_key_last(self, tmp_path):
+        config = {
+            'bundle_key': True,
+            'bundle_order': 'key_last',
+        }
+        cert, chain, key = self.prepare_install_files(tmp_path, config)
+        certs_data = ['Certified!\n']
+        key_data = 'Key?\n'
+        cr.install_files(config, certs_data, key_data)
+        assert cert.read_text() == 'Certified!\nKey?\n'
+        st = cert.lstat()
+        assert stat.S_IMODE(st.st_mode) & 0o077 == 0
+        assert not chain.exists()
+        assert not key.exists()
