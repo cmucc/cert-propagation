@@ -724,16 +724,20 @@ def write_one_file(file_name, data, config, setting_prefix):
         os.chown(file_name, uid, gid)
     os.chmod(file_name, config[setting_prefix + 'perms'])
 
+BACKUP_NOEXIST = object()
+BACKUP_SAMEDATA = object()
+BACKUP_SUCCESS = object()
+
 def backup_one_file(file_name, new_data, backup_file_name):
     try:
         with open(file_name, 'rb') as f:
             existing_data = f.read()
             s = os.stat(f.fileno())
     except FileNotFoundError:
-        return False
+        return BACKUP_NOEXIST
 
     if existing_data == new_data.encode():
-        return False
+        return BACKUP_SAMEDATA
 
     with open(backup_file_name, 'wb') as f:
         f.write(existing_data)
@@ -741,7 +745,7 @@ def backup_one_file(file_name, new_data, backup_file_name):
         os.chown(backup_file_name, s.st_uid, s.st_gid)
     os.chmod(backup_file_name, stat.S_IMODE(s.st_mode))
     os.utime(backup_file_name, ns=(s.st_atime_ns, s.st_mtime_ns))
-    return True
+    return BACKUP_SUCCESS
 
 def install_files(config, certificates, key):
     certificate_data = []
@@ -791,7 +795,7 @@ def install_files(config, certificates, key):
                 write_one_file(file_name + tmpsuffix, data, config, prefix)
 
         for file_name, data in written_as_tmpfile:
-            if backup_one_file(file_name, data, file_name + '.bak'):
+            if backup_one_file(file_name, data, file_name + '.bak') is BACKUP_SUCCESS:
                 backed_up.add(file_name)
 
         while written_as_tmpfile:
