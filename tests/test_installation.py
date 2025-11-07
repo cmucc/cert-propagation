@@ -178,7 +178,7 @@ class TestInstallation:
         backup = path.with_name(path.name + '.bak')
         data = 'howdy, howdy, howdy!'
         result = cr.backup_one_file(str(path), data, str(backup))
-        assert not result
+        assert result is cr.BACKUP_NOEXIST
         assert not path.exists()
         assert not backup.exists()
 
@@ -189,7 +189,7 @@ class TestInstallation:
         with open(str(path), 'wt') as fd:
             fd.write(data)
         result = cr.backup_one_file(str(path), data, str(backup))
-        assert not result
+        assert result is cr.BACKUP_SAMEDATA
         assert path.exists()
         assert not backup.exists()
 
@@ -207,7 +207,7 @@ class TestInstallation:
             os.utime(fd.fileno(), times=(old_time, old_time))
             old_time = os.stat(fd.fileno()).st_mtime_ns
         result = cr.backup_one_file(str(path), data, str(backup))
-        assert result
+        assert result is cr.BACKUP_SUCCESS
         assert path.exists()
         assert backup.exists()
         st = backup.lstat()
@@ -224,7 +224,7 @@ class TestInstallation:
             os.chown(fd.fileno(), 1711, 91)
             fd.write(old_data)
         result = cr.backup_one_file(str(path), data, str(backup))
-        assert result
+        assert result is cr.BACKUP_SUCCESS
         assert path.exists()
         assert backup.exists()
         st = backup.lstat()
