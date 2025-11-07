@@ -778,6 +778,7 @@ def install_files(config, certificates, key):
 
     old_umask = os.umask(0o077)
     written_as_tmpfile = []
+    written_data = []
     backed_up = {}
     installed = []
     try:
@@ -791,15 +792,16 @@ def install_files(config, certificates, key):
             if thing == 'key' and config['bundle_key']:
                 file_name = config['certificate_path']
             if data and file_name:
-                written_as_tmpfile.append((file_name, data))
+                written_as_tmpfile.append(file_name)
+                written_data.append(data)
                 write_one_file(file_name + tmpsuffix, data, config, prefix)
 
-        for file_name, data in written_as_tmpfile:
+        for file_name, data in zip(written_as_tmpfile, written_data):
             backup_state = backup_one_file(file_name, data, file_name + '.bak')
             backed_up[file_name] = backup_state
 
         while written_as_tmpfile:
-            file_name, _ = written_as_tmpfile[-1]
+            file_name = written_as_tmpfile[-1]
             os.rename(file_name + tmpsuffix, file_name)
             installed.append(written_as_tmpfile.pop())
 
