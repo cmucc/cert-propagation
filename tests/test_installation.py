@@ -1,5 +1,6 @@
 import grp
 import os
+from pathlib import Path
 import pwd
 import pytest
 import stat
@@ -329,3 +330,26 @@ class TestInstallation:
         assert stat.S_IMODE(st.st_mode) & 0o077 == 0
         assert not chain.exists()
         assert not key.exists()
+
+    def test_install_files_backups(self, tmp_path):
+        config = {}
+        cert, chain, key = self.prepare_install_files(tmp_path, config)
+        cert.write_text('A Certificate\n')
+        cert_bak = Path(cert).with_name(cert.name + '.bak')
+        cert_bak.write_text('Backup Certificate\n')
+        chain.write_text('Chain\nMail\n')
+        chain_bak = Path(cert).with_name(chain.name + '.bak')
+        chain_bak.write_text('Boiled Leather\n')
+        key.write_text('The Secret Key!\n')
+        key_bak = Path(key).with_name(key.name + '.bak')
+        assert not key_bak.exists()
+        certs_data = ['Another Certificate\n', 'Chain\n', 'Mail\n']
+        key_data = 'Unlocker...\n'
+        cr.install_files(config, certs_data, key_data)
+        assert cert.read_text() == 'Another Certificate\n'
+        assert cert_bak.read_text() == 'A Certificate\n'
+        assert chain.read_text() == 'Chain\nMail\n'
+        # Retained with old content, since the intermediates did not change
+        assert chain_bak.read_text() == 'Boiled Leather\n'
+        assert key.read_text() == 'Unlocker...\n'
+        assert key_bak.read_text() == 'The Secret Key!\n'
