@@ -849,14 +849,22 @@ def install_files(config, certificates, key):
 
         if recovered:
             for file_name, backup_state in backed_up.items():
-                if (backup_state is BACKUP_SUCCESS or
-                        backup_state is BACKUP_FAILED):
+                if backup_state in (BACKUP_SUCCESS, BACKUP_FAILED):
                     try:
                         os.unlink(file_name + '.bak')
                     except FileNotFoundError:
                         pass
                     except OSError:
-                        recovered = False
+                        if backup_state is BACKUP_FAILED:
+                            # Failed back-ups may be incomplete, so we'll
+                            # indicate there's a potential inconsistency if
+                            # we couldn't remove it but it's still present.
+                            recovered = False
+                        # On the other hand, successful back-ups have
+                        # consistent but non-useful content, since they'll
+                        # be the same as some file we couldn't change for
+                        # whatever reason.  Hence no need to flag that
+                        # there may be an inconsistency.
 
         msgs = []
         msgs.append('An error occurred installing the new certificates or key:')
