@@ -804,10 +804,20 @@ def install_files(config, certificates, key):
                 backed_up[file_name] = BACKUP_FAILED
                 raise
 
-        while written_as_tmpfile:
-            file_name = written_as_tmpfile[-1]
-            os.rename(file_name + tmpsuffix, file_name)
-            installed.append(written_as_tmpfile.pop())
+        # Reverse written_as_tmpfile so that working backwards popping
+        # elements performs the renames in the same order the tmpfiles were
+        # written above.  While this isn't necessary, it makes it easier to
+        # understand what a test injecting a fault at an nth call will
+        # affect-- for each step, an applicable certificate, intermediate
+        # bundle, and key are manipulated in that order.
+        written_as_tmpfile.reverse()
+        try:
+            while written_as_tmpfile:
+                file_name = written_as_tmpfile[-1]
+                os.rename(file_name + tmpsuffix, file_name)
+                installed.append(written_as_tmpfile.pop())
+        finally:
+            written_as_tmpfile.reverse()
 
     except OSError as e:
         recovered = True
@@ -826,9 +836,10 @@ def install_files(config, certificates, key):
                     os.unlink(file_name)
                 # The file_name will only end up in the installed list if we
                 # obtained a non-failure result while backing it up.  Hence
-                # any partial back-up for a file that with a BACKUP_FAILED
-                # result will still be unlinked when the remaining content
-                # of the backed_up map is iterated below.
+                # any partial back-up for a file with a BACKUP_FAILED result
+                # will still be unlinked when the remaining content of the
+                # backed_up map is iterated below, assuming no errors during
+                # the recovery processing.
                 try:
                     del backed_up[file_name]
                 except KeyError:
