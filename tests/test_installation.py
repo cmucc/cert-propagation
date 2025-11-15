@@ -372,6 +372,22 @@ class TestInstallation:
                 raise PermissionError('injected error')
         return side_effect
 
+    @staticmethod
+    def failp_backup_one_file(p, real_backup_one_file):
+        """
+        Returns a function that calls real_backup_one_file, but then also
+        raises a PermissionError if p(call_count) returns True.
+        """
+        calls = 0
+        def side_effect(file_name, new_data, backup_file_name):
+            nonlocal calls
+            calls += 1
+            print(f'backup: {file_name} -> {backup_file_name}')
+            real_backup_one_file(file_name, new_data, backup_file_name)
+            if p(calls):
+                raise PermissionError('injected error')
+        return side_effect
+
     def test_install_files_recovery_noexist_write_error(self, tmp_path):
         config = {}
         assert list(tmp_path.iterdir()) == [], 'Test should start with an empty data directory'
@@ -436,16 +452,8 @@ class TestInstallation:
         certs_data = ['uno\n', 'dos\n']
         key_data = 'tres'
         real_backup_one_file = cr.backup_one_file
-        calls = 0
-        def side_effect(file_name, new_data, backup_file_name):
-            nonlocal calls
-            calls += 1
-            print(f'backup: {file_name} -> {backup_file_name}')
-            real_backup_one_file(file_name, new_data, backup_file_name)
-            if calls == 1:
-                raise PermissionError('injected error')
         with patch('cert_receive.backup_one_file') as mock:
-            mock.side_effect = side_effect
+            mock.side_effect = self.failp_backup_one_file(lambda n: n == 1, real_backup_one_file)
             try:
                 cr.install_files(config, certs_data, key_data)
             except cr.UpdateFailedException as e:
