@@ -418,9 +418,6 @@ class TestInstallation:
         assert key.read_text() == 'key version 1\n'
         assert sorted([x.name for x in tmp_path.iterdir()]) == initial_files
 
-    @pytest.mark.skip(reason='This test uncovers a bug where recovery does '
-                      'not remove back-ups of files that were not actually '
-                      'installed')
     def test_install_files_recovery_backup_error(self, tmp_path):
         config = {
             'bundle_intermediate': True,
@@ -499,9 +496,6 @@ class TestInstallation:
         assert not key.exists()
         assert list(tmp_path.iterdir()) == []
 
-    @pytest.mark.skip(reason='This test uncovers a bug where recovery does '
-                      'not remove back-ups of files that were not actually '
-                      'installed')
     def test_install_files_recovery_all_changing_rename_error(self, tmp_path):
         config = {}
         assert list(tmp_path.iterdir()) == [], 'Test should start with an empty data directory'
@@ -528,9 +522,6 @@ class TestInstallation:
         assert key.read_text() == 'original key\n'
         assert sorted([x.name for x in tmp_path.iterdir()]) == initial_files
 
-    @pytest.mark.skip(reason='This test uncovers a bug where recovery does '
-                      'not remove back-ups of files that were not actually '
-                      'installed')
     def test_install_files_recovery_one_changing_rename_error(self, tmp_path):
         config = {}
         assert list(tmp_path.iterdir()) == [], 'Test should start with an empty data directory'
