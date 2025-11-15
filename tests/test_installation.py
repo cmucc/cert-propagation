@@ -46,8 +46,7 @@ class TestInstallation:
         path = tmp_path / what
         st = path.lstat()
         assert stat.S_ISREG(st.st_mode)
-        with open(str(path), 'rt') as fd:
-            assert fd.read() == data
+        assert path.read_text() == data
 
     @pytest.mark.usefixtures('clear_umask')
     @pytest.mark.parametrize('what', ['certificate', 'key'])
@@ -187,8 +186,7 @@ class TestInstallation:
         path = tmp_path / 'stuff'
         backup = path.with_name(path.name + '~')
         data = 'To be or not to be, that is the question.\n'
-        with open(str(path), 'wt') as fd:
-            fd.write(data)
+        path.write_text(data)
         result = cr.backup_one_file(str(path), data, str(backup))
         assert result is cr.BACKUP_SAMEDATA
         assert path.exists()
