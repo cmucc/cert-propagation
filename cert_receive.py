@@ -727,6 +727,7 @@ def write_one_file(file_name, data, config, setting_prefix):
 BACKUP_NOEXIST = object()
 BACKUP_SAMEDATA = object()
 BACKUP_SUCCESS = object()
+BACKUP_FAILED = object()
 
 def backup_one_file(file_name, new_data, backup_file_name):
     try:
@@ -797,8 +798,11 @@ def install_files(config, certificates, key):
                 write_one_file(file_name + tmpsuffix, data, config, prefix)
 
         for file_name, data in zip(written_as_tmpfile, written_data):
-            backup_state = backup_one_file(file_name, data, file_name + '.bak')
-            backed_up[file_name] = backup_state
+            try:
+                backed_up[file_name] = backup_one_file(file_name, data, file_name + '.bak')
+            except OSError:
+                backed_up[file_name] = BACKUP_FAILED
+                raise
 
         while written_as_tmpfile:
             file_name = written_as_tmpfile[-1]
@@ -820,8 +824,28 @@ def install_files(config, certificates, key):
                     os.rename(file_name + '.bak', file_name)
                 elif backup_state is BACKUP_NOEXIST:
                     os.unlink(file_name)
+                # The file_name will only end up in the installed list if we
+                # obtained a non-failure result while backing it up.  Hence
+                # any partial back-up for a file that with a BACKUP_FAILED
+                # result will still be unlinked when the remaining content
+                # of the backed_up map is iterated below.
+                try:
+                    del backed_up[file_name]
+                except KeyError:
+                    pass
             except OSError:
                 recovered = False
+
+        if recovered:
+            for file_name, backup_state in backed_up.items():
+                if (backup_state is BACKUP_SUCCESS or
+                        backup_state is BACKUP_FAILED):
+                    try:
+                        os.unlink(file_name + '.bak')
+                    except FileNotFoundError:
+                        pass
+                    except OSError:
+                        recovered = False
 
         msgs = []
         msgs.append('An error occurred installing the new certificates or key:')
