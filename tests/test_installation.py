@@ -251,6 +251,11 @@ class TestInstallation:
         cls.add_defaults_and_process_config(config)
         return (x[1] for x in paths)
 
+    @staticmethod
+    def make_backup_paths(*args):
+        return tuple(None if x is None else Path(x).with_name(x.name + '.bak')
+                     for x in args)
+
     def test_install_files_default(self, tmp_path):
         config = {}
         cert, chain, key = self.prepare_install_files(tmp_path, config)
@@ -334,14 +339,12 @@ class TestInstallation:
     def test_install_files_backups(self, tmp_path):
         config = {}
         cert, chain, key = self.prepare_install_files(tmp_path, config)
+        cert_bak, chain_bak, key_bak = self.make_backup_paths(cert, chain, key)
         cert.write_text('A Certificate\n')
-        cert_bak = Path(cert).with_name(cert.name + '.bak')
         cert_bak.write_text('Backup Certificate\n')
         chain.write_text('Chain\nMail\n')
-        chain_bak = Path(cert).with_name(chain.name + '.bak')
         chain_bak.write_text('Boiled Leather\n')
         key.write_text('The Secret Key!\n')
-        key_bak = Path(key).with_name(key.name + '.bak')
         assert not key_bak.exists()
         certs_data = ['Another Certificate\n', 'Chain\n', 'Mail\n']
         key_data = 'Unlocker...\n'
