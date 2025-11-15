@@ -3,6 +3,7 @@ import os
 from pathlib import Path
 import pwd
 import pytest
+import re
 import stat
 import time
 from unittest.mock import patch
@@ -354,3 +355,211 @@ class TestInstallation:
         assert chain_bak.read_text() == 'Boiled Leather\n'
         assert key.read_text() == 'Unlocker...\n'
         assert key_bak.read_text() == 'The Secret Key!\n'
+
+    @staticmethod
+    def failp_write_one_file(p, real_write_one_file):
+        """
+        Returns a function that calls real_write_one_file, but then also
+        raises a PermissionError if p(call_count) returns True.
+        """
+        calls = 0
+        def side_effect(file_name, data, config, setting_prefix):
+            nonlocal calls
+            calls += 1
+            print(f'write_one_file: {file_name}')
+            real_write_one_file(file_name, data, config, setting_prefix)
+            if p(calls):
+                raise PermissionError('injected error')
+        return side_effect
+
+    def test_install_files_recovery_noexist_write_error(self, tmp_path):
+        config = {}
+        assert list(tmp_path.iterdir()) == [], 'Test should start with an empty data directory'
+        cert, chain, key = self.prepare_install_files(tmp_path, config)
+        certs_data = ['data\n', 'data\n', 'data\n']
+        key_data = 'data\n'
+        real_write_one_file = cr.write_one_file
+        with patch('cert_receive.write_one_file') as mock:
+            mock.side_effect = self.failp_write_one_file(lambda n: n == 2, real_write_one_file)
+            try:
+                cr.install_files(config, certs_data, key_data)
+            except cr.UpdateFailedException as e:
+                assert not re.search(r'\binconsistent\b', str(e))
+            else:
+                assert False, 'Expected an exception due to fault injection'
+        assert not cert.exists()
+        assert not chain.exists()
+        assert not key.exists()
+        assert list(tmp_path.iterdir()) == []
+
+    def test_install_files_recovery_all_changing_write_error(self, tmp_path):
+        config = {}
+        assert list(tmp_path.iterdir()) == [], 'Test should start with an empty data directory'
+        cert, chain, key = self.prepare_install_files(tmp_path, config)
+        cert.write_text('cert version 1\n')
+        chain.write_text('chain version 1\n')
+        key.write_text('key version 1\n')
+        initial_files = [x.name for x in tmp_path.iterdir()]
+        initial_files.sort()
+        assert initial_files == ['cert', 'chain', 'key']
+        certs_data = ['cert verison 2\n', 'chain version 2\n']
+        key_data = 'key version 2\n'
+        real_write_one_file = cr.write_one_file
+        with patch('cert_receive.write_one_file') as mock:
+            mock.side_effect = self.failp_write_one_file(lambda n: n == 3, real_write_one_file)
+            try:
+                cr.install_files(config, certs_data, key_data)
+            except cr.UpdateFailedException as e:
+                assert not re.search(r'\binconsistent\b', str(e))
+            else:
+                assert False, 'Expected an exception due to fault injection'
+        assert cert.read_text() == 'cert version 1\n'
+        assert chain.read_text() == 'chain version 1\n'
+        assert key.read_text() == 'key version 1\n'
+        assert sorted([x.name for x in tmp_path.iterdir()]) == initial_files
+
+    @pytest.mark.skip(reason='This test uncovers a bug where recovery does '
+                      'not remove back-ups of files that were not actually '
+                      'installed')
+    def test_install_files_recovery_backup_error(self, tmp_path):
+        config = {
+            'bundle_intermediate': True,
+            'intermediate_path': None,
+        }
+        assert list(tmp_path.iterdir()) == [], 'Test should start with an empty data directory'
+        cert, _, key = self.prepare_install_files(tmp_path, config)
+        cert_bak, key_bak = self.make_backup_paths(cert, key)
+        cert.write_text('alpha\nbravo\n')
+        cert_bak.write_text('a\nb\n')
+        key.write_text('kilo\n')
+        key_bak.write_text('k\n')
+        initial_files = [x.name for x in tmp_path.iterdir()]
+        initial_files.sort()
+        assert initial_files == ['cert', 'cert.bak', 'key', 'key.bak']
+        certs_data = ['uno\n', 'dos\n']
+        key_data = 'tres'
+        real_backup_one_file = cr.backup_one_file
+        calls = 0
+        def side_effect(file_name, new_data, backup_file_name):
+            nonlocal calls
+            calls += 1
+            print(f'backup: {file_name} -> {backup_file_name}')
+            real_backup_one_file(file_name, new_data, backup_file_name)
+            if calls == 1:
+                raise PermissionError('injected error')
+        with patch('cert_receive.backup_one_file') as mock:
+            mock.side_effect = side_effect
+            try:
+                cr.install_files(config, certs_data, key_data)
+            except cr.UpdateFailedException as e:
+                assert not re.search(r'\binconsistent\b', str(e))
+            else:
+                assert False, 'Expected an exception due to fault injection'
+        assert cert.read_text() == 'alpha\nbravo\n'
+        assert not cert_bak.exists()
+        assert key.read_text() == 'kilo\n'
+        assert key_bak.read_text() == 'k\n'
+        final_files = [x.name for x in tmp_path.iterdir()]
+        final_files.sort()
+        assert final_files == ['cert', 'key', 'key.bak']
+
+    @staticmethod
+    def failp_rename(p, real_rename):
+        """
+        Returns a function that calls raises a PermissionError if p(call_count)
+        returns True and otherwise calls real_rename.
+        """
+        calls = 0
+        def side_effect(src, dst):
+            nonlocal calls
+            calls += 1
+            if p(calls):
+                raise PermissionError('injected error')
+            print(f'rename: {src} -> {dst}')
+            real_rename(src, dst)
+        return side_effect
+
+    def test_install_files_recovery_noexist_rename_error(self, tmp_path):
+        config = {}
+        assert list(tmp_path.iterdir()) == [], 'Test should start with an empty data directory'
+        cert, chain, key = self.prepare_install_files(tmp_path, config)
+        certs_data = ['one\n', 'two\n']
+        key_data = 'schlage\n'
+        real_rename = os.rename
+        with patch('os.rename') as mock:
+            mock.side_effect = self.failp_rename(lambda n: n == 3, real_rename)
+            try:
+                cr.install_files(config, certs_data, key_data)
+            except cr.UpdateFailedException as e:
+                assert not re.search(r'\binconsistent\b', str(e))
+            else:
+                assert False, 'Expected an exception due to fault injection'
+        assert not cert.exists()
+        assert not chain.exists()
+        assert not key.exists()
+        assert list(tmp_path.iterdir()) == []
+
+    @pytest.mark.skip(reason='This test uncovers a bug where recovery does '
+                      'not remove back-ups of files that were not actually '
+                      'installed')
+    def test_install_files_recovery_all_changing_rename_error(self, tmp_path):
+        config = {}
+        assert list(tmp_path.iterdir()) == [], 'Test should start with an empty data directory'
+        cert, chain, key = self.prepare_install_files(tmp_path, config)
+        cert.write_text('original cert\n')
+        chain.write_text('original chain\n')
+        key.write_text('original key\n')
+        initial_files = [x.name for x in tmp_path.iterdir()]
+        initial_files.sort()
+        assert initial_files == ['cert', 'chain', 'key']
+        certs_data = ['cert1\n', 'cert2\n', 'cert3\n']
+        key_data = 'key\n'
+        real_rename = os.rename
+        with patch('os.rename') as mock:
+            mock.side_effect = self.failp_rename(lambda n: n == 3, real_rename)
+            try:
+                cr.install_files(config, certs_data, key_data)
+            except cr.UpdateFailedException as e:
+                assert not re.search(r'\binconsistent\b', str(e))
+            else:
+                assert False, 'Expected an exception due to fault injection'
+        assert cert.read_text() == 'original cert\n'
+        assert chain.read_text() == 'original chain\n'
+        assert key.read_text() == 'original key\n'
+        assert sorted([x.name for x in tmp_path.iterdir()]) == initial_files
+
+    @pytest.mark.skip(reason='This test uncovers a bug where recovery does '
+                      'not remove back-ups of files that were not actually '
+                      'installed')
+    def test_install_files_recovery_one_changing_rename_error(self, tmp_path):
+        config = {}
+        assert list(tmp_path.iterdir()) == [], 'Test should start with an empty data directory'
+        cert, chain, key = self.prepare_install_files(tmp_path, config)
+        cert_bak, chain_bak, key_bak = self.make_backup_paths(cert, chain, key)
+        cert.write_text('My second certificate\n')
+        cert_bak.write_text('My first certificate\n')
+        chain.write_text('My intermediate\n')
+        chain_bak.write_text('My old intermediate\n')
+        key.write_text('My first key\n')
+        initial_files = [x.name for x in tmp_path.iterdir()]
+        initial_files.sort()
+        assert initial_files == ['cert', 'cert.bak', 'chain', 'chain.bak', 'key']
+        certs_data = ['My third certificate\n', 'My intermediate\n']
+        key_data = 'My first key\n'
+        real_rename = os.rename
+        with patch('os.rename') as mock:
+            mock.side_effect = self.failp_rename(lambda n: n == 3, real_rename)
+            try:
+                cr.install_files(config, certs_data, key_data)
+            except cr.UpdateFailedException as e:
+                assert not re.search(r'\binconsistent\b', str(e))
+            else:
+                assert False, 'Expected an exception due to fault injection'
+        assert cert.read_text() == 'My second certificate\n'
+        assert not cert_bak.exists()
+        assert chain.read_text() == 'My intermediate\n'
+        assert chain_bak.read_text() == 'My old intermediate\n'
+        assert key.read_text() == 'My first key\n'
+        final_files = [x.name for x in tmp_path.iterdir()]
+        final_files.sort()
+        assert final_files == ['cert', 'chain', 'chain.bak', 'key']
