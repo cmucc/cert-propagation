@@ -1,5 +1,5 @@
 from collections import namedtuple
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import OpenSSL.crypto as ssl_crypto
 import os.path
 import pytest
@@ -89,7 +89,7 @@ def certificate_helper_per_session():
                 cert.set_version(2) # the value 2 represents version 3
                 cert.get_subject().commonName = subject.encode()
                 cert.get_issuer().commonName = issuer.encode()
-                now = datetime.utcnow()
+                now = datetime.now(timezone.utc)
                 cert.set_notBefore(cls.datetime_to_asn1(now - timedelta(days=1)))
                 cert.set_notAfter(cls.datetime_to_asn1(now + timedelta(days=30)))
                 cert.add_extensions([
