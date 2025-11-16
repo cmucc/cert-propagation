@@ -484,6 +484,22 @@ class TestInstallation:
             real_rename(src, dst)
         return side_effect
 
+    @staticmethod
+    def failp_unlink(p, real_unlink):
+        """
+        Returns a function that calls raises a PermissionError if p(call_count)
+        returns True and otherwise calls real_unlink.
+        """
+        calls = 0
+        def side_effect(target):
+            nonlocal calls
+            calls += 1
+            if p(calls):
+                raise PermissionError('injected error')
+            print(f'unlink: {target}')
+            real_unlink(target)
+        return side_effect
+
     def test_install_files_recovery_noexist_rename_error(self, tmp_path):
         config = {}
         assert list(tmp_path.iterdir()) == [], 'Test should start with an empty data directory'
@@ -562,3 +578,167 @@ class TestInstallation:
         final_files = [x.name for x in tmp_path.iterdir()]
         final_files.sort()
         assert final_files == ['cert', 'chain', 'chain.bak', 'key']
+
+    def test_install_files_recovery_error_rename(self, tmp_path):
+        config = {}
+        cert, chain, key = self.prepare_install_files(tmp_path, config)
+        cert_bak, chain_bak, key_bak = self.make_backup_paths(cert, chain, key)
+        cert.write_text('C maj.\n')
+        cert_bak.write_text('C\n')
+        chain.write_text('IV V I\n')
+        chain_bak.write_text('V I\n')
+        key.write_text('progression\n')
+        key_bak.write_text('cadence\n')
+        initial_files = [x.name for x in tmp_path.iterdir()]
+        initial_files.sort()
+        assert initial_files == ['cert', 'cert.bak', 'chain', 'chain.bak', 'key', 'key.bak']
+        certs_data = ['c minor\n', 'V VI\n']
+        key_data = 'deceptive\n'
+        real_rename = os.rename
+        with patch('os.rename') as mock:
+            # Fail installing key, and only can recover cert
+            mock.side_effect = self.failp_rename(lambda n: n == 3 or n >= 5, real_rename)
+            try:
+                cr.install_files(config, certs_data, key_data)
+            except cr.UpdateFailedException as e:
+                assert re.search(r'\binconsistent\b', str(e)), \
+                       'Expected an indication that certificates/keys may be in an inconsistent state'
+            else:
+                assert False, 'Expected an exception due to fault injection'
+        assert cert.read_text() == 'C maj.\n'
+        assert not cert_bak.exists()
+        assert chain.read_text() == 'V VI\n'
+        assert chain_bak.read_text() == 'IV V I\n'
+        assert key.read_text() == 'progression\n'
+        # Backup of unchanged key is not deleted because of recovery error
+        assert key_bak.read_text() == 'progression\n'
+        final_files = [x.name for x in tmp_path.iterdir()]
+        final_files.sort()
+        assert final_files == ['cert', 'chain', 'chain.bak', 'key', 'key.bak']
+
+    def test_install_files_recovery_error_unlink_no_existing(self, tmp_path):
+        config = {
+            'bundle_intermediate': True,
+            'intermediate_path': None,
+        }
+        assert list(tmp_path.iterdir()) == [], 'Test should start with an empty data directory'
+        cert, _, key = self.prepare_install_files(tmp_path, config)
+        certs_data = ['H: Hydrogen\n', 'He: Helium\n']
+        key_data = 'K: Potassium\n'
+        real_rename, real_unlink = os.rename, os.unlink
+        with patch('os.rename') as mock_rename, patch('os.unlink') as mock_unlink:
+            mock_rename.side_effect = self.failp_rename(lambda n: n == 2, real_rename)
+            mock_unlink.side_effect = self.failp_unlink(lambda n: n == 2, real_unlink)
+            try:
+                cr.install_files(config, certs_data, key_data)
+            except cr.UpdateFailedException as e:
+                assert re.search(r'\binconsistent\b', str(e)), \
+                       'Expected an indication that certificates/keys may be in an inconsistent state'
+            else:
+                assert False, 'Expected an exception due to fault injection'
+        assert cert.read_text() == 'H: Hydrogen\nHe: Helium\n'
+        assert not key.exists()
+        final_files = [x.name for x in tmp_path.iterdir()]
+        final_files.sort()
+        assert final_files == ['cert']
+
+    def test_install_files_recovery_error_unlink_tmpfile(self, tmp_path):
+        config = {}
+        cert, chain, key = self.prepare_install_files(tmp_path, config)
+        cert_bak, chain_bak, key_bak = self.make_backup_paths(cert, chain, key)
+        cert.write_text('Apple\n')
+        cert_bak.write_text('Chicken\n')
+        chain.write_text('Pome\n')
+        chain_bak.write_text('Poultry\n')
+        key.write_text('Pear\n')
+        key_bak.write_text('Turkey\n')
+        initial_files = [x.name for x in tmp_path.iterdir()]
+        initial_files.sort()
+        assert initial_files == ['cert', 'cert.bak', 'chain', 'chain.bak', 'key', 'key.bak']
+        certs_data = ['Orange\n','Citrus\n']
+        key_data = 'Lime\n'
+        real_write_one_file, real_unlink = cr.write_one_file, os.unlink
+        with patch('cert_receive.write_one_file') as mock_write, \
+             patch('os.unlink') as mock_unlink:
+            mock_write.side_effect = self.failp_write_one_file(lambda n: n == 2, real_write_one_file)
+            mock_unlink.side_effect = self.failp_unlink(lambda n: n == 1, real_unlink)
+            try:
+                cr.install_files(config, certs_data, key_data)
+            except cr.UpdateFailedException as e:
+                assert not re.search(r'\binconsistent\b', str(e))
+            else:
+                assert False, 'Expected an exception due to fault injection'
+        assert cert.read_text() == 'Apple\n'
+        assert cert_bak.read_text() == 'Chicken\n'
+        assert chain.read_text() == 'Pome\n'
+        assert chain_bak.read_text() == 'Poultry\n'
+        assert key.read_text() == 'Pear\n'
+        assert key_bak.read_text() == 'Turkey\n'
+        expected_files = initial_files[0:]
+        expected_files.append('cert.new-{}'.format(os.getpid()))
+        expected_files.sort()
+        final_files = [x.name for x in tmp_path.iterdir()]
+        final_files.sort()
+        assert final_files == expected_files
+
+    def test_install_files_recovery_error_unlink_backup(self, tmp_path):
+        config = {
+            'bundle_intermediate': True,
+            'intermediate_path': None,
+        }
+        cert, _, key = self.prepare_install_files(tmp_path, config)
+        cert_bak, key_bak = self.make_backup_paths(cert, key)
+        cert.write_text('Hola!\n')
+        key.write_text('Hello.\n')
+        initial_files = [x.name for x in tmp_path.iterdir()]
+        initial_files.sort()
+        assert initial_files == ['cert', 'key']
+        certs_data = ['Adios.\n']
+        key_data = 'Good bye.\n'
+        real_rename, real_unlink = os.rename, os.unlink
+        with patch('os.rename') as mock_rename, patch('os.unlink') as mock_unlink:
+            mock_rename.side_effect = self.failp_rename(lambda n: n == 2, real_rename)
+            mock_unlink.side_effect = self.failp_unlink(lambda n: n == 2, real_unlink)
+            try:
+                cr.install_files(config, certs_data, key_data)
+            except cr.UpdateFailedException as e:
+                assert not re.search(r'\binconsistent\b', str(e))
+            else:
+                assert False, 'Expected an exception due to fault injection'
+        assert cert.read_text() == 'Hola!\n'
+        assert key.read_text() == 'Hello.\n'
+        assert key_bak.read_text() == 'Hello.\n'
+        final_files = [x.name for x in tmp_path.iterdir()]
+        final_files.sort()
+        assert final_files == ['cert', 'key', 'key.bak']
+
+    def test_install_files_recovery_error_unlink_bad_backup(self, tmp_path):
+        config = {
+            'bundle_intermediate': True,
+            'bundle_key': True,
+            'intermediate_path': None,
+        }
+        cert, _, _ = self.prepare_install_files(tmp_path, config)
+        cert_bak, = self.make_backup_paths(cert)
+        cert.write_text('smoosh\ncrunch\n')
+        initial_files = [x.name for x in tmp_path.iterdir()]
+        initial_files.sort()
+        assert initial_files == ['cert']
+        certs_data = ['crunchier\n']
+        key_data = 'smooshier\n'
+        real_backup_one_file, real_unlink = cr.backup_one_file, os.unlink
+        with patch('cert_receive.backup_one_file') as mock_backup, \
+             patch('os.unlink') as mock_unlink:
+            mock_backup.side_effect = self.failp_backup_one_file(lambda n: n == 1, real_backup_one_file)
+            mock_unlink.side_effect = self.failp_unlink(lambda n: n == 2, real_unlink)
+            try:
+                cr.install_files(config, certs_data, key_data)
+            except cr.UpdateFailedException as e:
+                assert re.search(r'\binconsistent\b', str(e)), \
+                       'Expected an indication that certificates/keys may be in an inconsistent state'
+            else:
+                assert False, 'Expected an exception due to fault injection'
+        assert cert.read_text() == 'smoosh\ncrunch\n'
+        final_files = [x.name for x in tmp_path.iterdir()]
+        final_files.sort()
+        assert final_files == ['cert', 'cert.bak']
