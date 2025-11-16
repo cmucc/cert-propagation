@@ -5,6 +5,7 @@ import pwd
 import pytest
 import re
 import stat
+import sys
 import time
 from unittest.mock import patch
 
@@ -255,6 +256,57 @@ class TestInstallation:
         return tuple(None if x is None else Path(x).with_name(x.name + '.bak')
                      for x in args)
 
+    @staticmethod
+    def make_call_string(name, *args, **kwargs):
+        def my_repr(o):
+            if o is None or isinstance(o, (bytes, float, int, str, type)):
+                return repr(o)
+            else:
+                return '<{} {:#x}>'.format(type(o).__name__, id(o))
+
+        return '{}({})'.format(
+            name,
+            ', '.join([my_repr(x) for x in args] +
+                      ['='.join([k, my_repr(v)]) for k, v in kwargs.items()])
+        )
+
+    @classmethod
+    def failp_after(cls, p, real_func, etype=PermissionError):
+        """
+        Returns a function that calls real_func, but then also raises an
+        instance of etype if p(call_count) returns True.
+        """
+        calls = 0
+        def side_effect(*args, **kwargs):
+            nonlocal calls
+            calls += 1
+            callstr = cls.make_call_string(real_func.__name__, *args, **kwargs)
+            print('CALL {}'.format(callstr), file=sys.stderr)
+            ret = real_func(*args, **kwargs)
+            if p(calls):
+                print('FAIL {}'.format('^' * len(callstr)), file=sys.stderr)
+                raise etype('injected error')
+            return ret
+        return side_effect
+
+    @classmethod
+    def failp_before(cls, p, real_func, etype=PermissionError):
+        """
+        Returns a function that raises an instance of etype if p(call_count)
+        returns True but otherwise calls real_func.
+        """
+        calls = 0
+        def side_effect(*args, **kwargs):
+            nonlocal calls
+            calls += 1
+            callstr = cls.make_call_string(real_func.__name__, *args, **kwargs)
+            if p(calls):
+                print('   FAIL {}'.format(callstr), file=sys.stderr)
+                raise etype('injected error')
+            print('   CALL {}'.format(callstr), file=sys.stderr)
+            return real_func(*args, **kwargs)
+        return side_effect
+
     def test_install_files_default(self, tmp_path):
         config = {}
         cert, chain, key = self.prepare_install_files(tmp_path, config)
@@ -356,38 +408,6 @@ class TestInstallation:
         assert key.read_text() == 'Unlocker...\n'
         assert key_bak.read_text() == 'The Secret Key!\n'
 
-    @staticmethod
-    def failp_write_one_file(p, real_write_one_file):
-        """
-        Returns a function that calls real_write_one_file, but then also
-        raises a PermissionError if p(call_count) returns True.
-        """
-        calls = 0
-        def side_effect(file_name, data, config, setting_prefix):
-            nonlocal calls
-            calls += 1
-            print(f'write_one_file: {file_name}')
-            real_write_one_file(file_name, data, config, setting_prefix)
-            if p(calls):
-                raise PermissionError('injected error')
-        return side_effect
-
-    @staticmethod
-    def failp_backup_one_file(p, real_backup_one_file):
-        """
-        Returns a function that calls real_backup_one_file, but then also
-        raises a PermissionError if p(call_count) returns True.
-        """
-        calls = 0
-        def side_effect(file_name, new_data, backup_file_name):
-            nonlocal calls
-            calls += 1
-            print(f'backup: {file_name} -> {backup_file_name}')
-            real_backup_one_file(file_name, new_data, backup_file_name)
-            if p(calls):
-                raise PermissionError('injected error')
-        return side_effect
-
     def test_install_files_recovery_noexist_write_error(self, tmp_path):
         config = {}
         assert list(tmp_path.iterdir()) == [], 'Test should start with an empty data directory'
@@ -396,7 +416,7 @@ class TestInstallation:
         key_data = 'data\n'
         real_write_one_file = cr.write_one_file
         with patch('cert_receive.write_one_file') as mock:
-            mock.side_effect = self.failp_write_one_file(lambda n: n == 2, real_write_one_file)
+            mock.side_effect = self.failp_after(lambda n: n == 2, real_write_one_file)
             try:
                 cr.install_files(config, certs_data, key_data)
             except cr.UpdateFailedException as e:
@@ -422,7 +442,7 @@ class TestInstallation:
         key_data = 'key version 2\n'
         real_write_one_file = cr.write_one_file
         with patch('cert_receive.write_one_file') as mock:
-            mock.side_effect = self.failp_write_one_file(lambda n: n == 3, real_write_one_file)
+            mock.side_effect = self.failp_after(lambda n: n == 3, real_write_one_file)
             try:
                 cr.install_files(config, certs_data, key_data)
             except cr.UpdateFailedException as e:
@@ -453,7 +473,7 @@ class TestInstallation:
         key_data = 'tres'
         real_backup_one_file = cr.backup_one_file
         with patch('cert_receive.backup_one_file') as mock:
-            mock.side_effect = self.failp_backup_one_file(lambda n: n == 1, real_backup_one_file)
+            mock.side_effect = self.failp_after(lambda n: n == 1, real_backup_one_file)
             try:
                 cr.install_files(config, certs_data, key_data)
             except cr.UpdateFailedException as e:
@@ -468,38 +488,6 @@ class TestInstallation:
         final_files.sort()
         assert final_files == ['cert', 'key', 'key.bak']
 
-    @staticmethod
-    def failp_rename(p, real_rename):
-        """
-        Returns a function that calls raises a PermissionError if p(call_count)
-        returns True and otherwise calls real_rename.
-        """
-        calls = 0
-        def side_effect(src, dst):
-            nonlocal calls
-            calls += 1
-            if p(calls):
-                raise PermissionError('injected error')
-            print(f'rename: {src} -> {dst}')
-            real_rename(src, dst)
-        return side_effect
-
-    @staticmethod
-    def failp_unlink(p, real_unlink):
-        """
-        Returns a function that calls raises a PermissionError if p(call_count)
-        returns True and otherwise calls real_unlink.
-        """
-        calls = 0
-        def side_effect(target):
-            nonlocal calls
-            calls += 1
-            if p(calls):
-                raise PermissionError('injected error')
-            print(f'unlink: {target}')
-            real_unlink(target)
-        return side_effect
-
     def test_install_files_recovery_noexist_rename_error(self, tmp_path):
         config = {}
         assert list(tmp_path.iterdir()) == [], 'Test should start with an empty data directory'
@@ -508,7 +496,7 @@ class TestInstallation:
         key_data = 'schlage\n'
         real_rename = os.rename
         with patch('os.rename') as mock:
-            mock.side_effect = self.failp_rename(lambda n: n == 3, real_rename)
+            mock.side_effect = self.failp_before(lambda n: n == 3, real_rename)
             try:
                 cr.install_files(config, certs_data, key_data)
             except cr.UpdateFailedException as e:
@@ -534,7 +522,7 @@ class TestInstallation:
         key_data = 'key\n'
         real_rename = os.rename
         with patch('os.rename') as mock:
-            mock.side_effect = self.failp_rename(lambda n: n == 3, real_rename)
+            mock.side_effect = self.failp_before(lambda n: n == 3, real_rename)
             try:
                 cr.install_files(config, certs_data, key_data)
             except cr.UpdateFailedException as e:
@@ -563,7 +551,7 @@ class TestInstallation:
         key_data = 'My first key\n'
         real_rename = os.rename
         with patch('os.rename') as mock:
-            mock.side_effect = self.failp_rename(lambda n: n == 3, real_rename)
+            mock.side_effect = self.failp_before(lambda n: n == 3, real_rename)
             try:
                 cr.install_files(config, certs_data, key_data)
             except cr.UpdateFailedException as e:
@@ -597,7 +585,7 @@ class TestInstallation:
         real_rename = os.rename
         with patch('os.rename') as mock:
             # Fail installing key, and only can recover cert
-            mock.side_effect = self.failp_rename(lambda n: n == 3 or n >= 5, real_rename)
+            mock.side_effect = self.failp_before(lambda n: n == 3 or n >= 5, real_rename)
             try:
                 cr.install_files(config, certs_data, key_data)
             except cr.UpdateFailedException as e:
@@ -627,8 +615,8 @@ class TestInstallation:
         key_data = 'K: Potassium\n'
         real_rename, real_unlink = os.rename, os.unlink
         with patch('os.rename') as mock_rename, patch('os.unlink') as mock_unlink:
-            mock_rename.side_effect = self.failp_rename(lambda n: n == 2, real_rename)
-            mock_unlink.side_effect = self.failp_unlink(lambda n: n == 2, real_unlink)
+            mock_rename.side_effect = self.failp_before(lambda n: n == 2, real_rename)
+            mock_unlink.side_effect = self.failp_before(lambda n: n == 2, real_unlink)
             try:
                 cr.install_files(config, certs_data, key_data)
             except cr.UpdateFailedException as e:
@@ -660,8 +648,8 @@ class TestInstallation:
         real_write_one_file, real_unlink = cr.write_one_file, os.unlink
         with patch('cert_receive.write_one_file') as mock_write, \
              patch('os.unlink') as mock_unlink:
-            mock_write.side_effect = self.failp_write_one_file(lambda n: n == 2, real_write_one_file)
-            mock_unlink.side_effect = self.failp_unlink(lambda n: n == 1, real_unlink)
+            mock_write.side_effect = self.failp_after(lambda n: n == 2, real_write_one_file)
+            mock_unlink.side_effect = self.failp_before(lambda n: n == 1, real_unlink)
             try:
                 cr.install_files(config, certs_data, key_data)
             except cr.UpdateFailedException as e:
@@ -697,8 +685,8 @@ class TestInstallation:
         key_data = 'Good bye.\n'
         real_rename, real_unlink = os.rename, os.unlink
         with patch('os.rename') as mock_rename, patch('os.unlink') as mock_unlink:
-            mock_rename.side_effect = self.failp_rename(lambda n: n == 2, real_rename)
-            mock_unlink.side_effect = self.failp_unlink(lambda n: n == 2, real_unlink)
+            mock_rename.side_effect = self.failp_before(lambda n: n == 2, real_rename)
+            mock_unlink.side_effect = self.failp_before(lambda n: n == 2, real_unlink)
             try:
                 cr.install_files(config, certs_data, key_data)
             except cr.UpdateFailedException as e:
@@ -729,8 +717,8 @@ class TestInstallation:
         real_backup_one_file, real_unlink = cr.backup_one_file, os.unlink
         with patch('cert_receive.backup_one_file') as mock_backup, \
              patch('os.unlink') as mock_unlink:
-            mock_backup.side_effect = self.failp_backup_one_file(lambda n: n == 1, real_backup_one_file)
-            mock_unlink.side_effect = self.failp_unlink(lambda n: n == 2, real_unlink)
+            mock_backup.side_effect = self.failp_after(lambda n: n == 1, real_backup_one_file)
+            mock_unlink.side_effect = self.failp_before(lambda n: n == 2, real_unlink)
             try:
                 cr.install_files(config, certs_data, key_data)
             except cr.UpdateFailedException as e:
