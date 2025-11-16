@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import OpenSSL.crypto as ssl_crypto
 import pytest
 import subprocess
@@ -54,7 +54,7 @@ class TestVerifications:
 
     def test_verify_certificate_dates_positive(self):
         to_asn1 = self.datetime_to_asn1
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         certs = [Mock() for _ in range(0, 2)]
         certs[0].get_notBefore.return_value = to_asn1(now - timedelta(days=20))
         certs[0].get_notAfter.return_value = to_asn1(now + timedelta(days=70))
@@ -66,7 +66,7 @@ class TestVerifications:
 
     def test_verify_certificate_dates_expired_app_cert(self):
         to_asn1 = self.datetime_to_asn1
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         certs = [Mock() for _ in range(0, 2)]
         certs[0].get_notBefore.return_value = b'20200717000000Z'
         certs[0].get_notAfter.return_value = b'20201014235959Z'
@@ -78,7 +78,7 @@ class TestVerifications:
 
     def test_verify_certificate_dates_future_app_cert(self):
         to_asn1 = self.datetime_to_asn1
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         certs = [Mock() for _ in range(0, 2)]
         certs[0].get_notBefore.return_value = to_asn1(now + timedelta(seconds=4*60*60))
         certs[0].get_notAfter.return_value = to_asn1(now + timedelta(days=90))
@@ -90,7 +90,7 @@ class TestVerifications:
 
     def test_verify_certificate_dates_expired_intermediate_cert(self):
         to_asn1 = self.datetime_to_asn1
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         certs = [Mock() for _ in range(0, 2)]
         certs[0].get_notBefore.return_value = to_asn1(now - timedelta(days=13))
         certs[0].get_notAfter.return_value = to_asn1(now + timedelta(days=77))
@@ -102,7 +102,7 @@ class TestVerifications:
 
     def test_verify_certificate_dates_future_intermediate_cert(self):
         to_asn1 = self.datetime_to_asn1
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         certs = [Mock() for _ in range(0, 2)]
         certs[0].get_notBefore.return_value = to_asn1(now - timedelta(days=88))
         certs[0].get_notAfter.return_value = to_asn1(now + timedelta(days=2))
