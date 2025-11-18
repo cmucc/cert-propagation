@@ -1,6 +1,9 @@
 from collections import namedtuple
+from cryptography import x509
+from cryptography.hazmat.primitives \
+        import serialization as crypto_serdes, hashes as crypto_hashes
+from cryptography.x509.oid import NameOID
 from datetime import datetime, timedelta, timezone
-import OpenSSL.crypto as ssl_crypto
 import os.path
 import pytest
 
@@ -26,8 +29,7 @@ def certificate_helper_per_session():
                 keyfile = os.path.join(datadir, 'key{}.pem'.format(key_num))
                 with open(keyfile, 'rb') as fd:
                     keydata = fd.read()
-                key = ssl_crypto.load_privatekey(ssl_crypto.FILETYPE_PEM,
-                                                 keydata)
+                key = crypto_serdes.load_pem_private_key(keydata, password=None)
                 keys[key_num] = key
             return keys[key_num]
 
@@ -37,19 +39,19 @@ def certificate_helper_per_session():
             if cert_args not in certs:
                 bitvector = [1 if arg is not None else 0 for arg in cert_args]
                 if bitvector == [1, 0, 0]:
-                    is_ca = 'CA:TRUE'
+                    is_ca = True
                     subject = 'CA Certificate {}'.format(ca_num)
                     pubkey = cls.get_key(ca_num)
                     issuer = subject
                     signkey = pubkey
                 elif bitvector == [1, 1, 0]:
-                    is_ca = 'CA:FALSE'
+                    is_ca = False
                     subject = 'Intermediate Certificate {}'.format(intermediate_num)
                     pubkey = cls.get_key(intermediate_num)
                     issuer = 'CA Certificate {}'.format(ca_num)
                     signkey = cls.get_key(ca_num)
                 elif bitvector == [1, 0, 1]:
-                    is_ca = 'CA:FALSE'
+                    is_ca = False
                     subject = 'CA-signed Certificate {}'.format(key_num)
                     pubkey = cls.get_key(key_num)
                     issuer = 'CA Certificate {}'.format(ca_num)
@@ -62,19 +64,19 @@ def certificate_helper_per_session():
                             'Inappropriate arguments. If an intermediate_num '
                             'is provided alone, it must be a sequence of length 2.'
                         ) from e
-                    is_ca = 'CA:FALSE'
+                    is_ca = False
                     subject = 'Intermediate Certificate {}'.format(subject_num)
                     pubkey = cls.get_key(subject_num)
                     issuer = 'Intermediate Certificate {}'.format(issuer_num)
                     signkey = cls.get_key(issuer_num)
                 elif bitvector == [0, 1, 1]:
-                    is_ca = 'CA:FALSE'
+                    is_ca = False
                     subject = 'Intermediate-signed Certificate {}'.format(key_num)
                     pubkey = cls.get_key(key_num)
                     issuer = 'Intermediate Certificate {}'.format(intermediate_num)
                     signkey = cls.get_key(intermediate_num)
                 elif bitvector == [0, 0, 1]:
-                    is_ca = 'CA:FALSE'
+                    is_ca = False
                     subject = 'Self-signed Certificate {}'.format(key_num)
                     pubkey = cls.get_key(key_num)
                     issuer = subject
@@ -85,21 +87,27 @@ def certificate_helper_per_session():
                         'one or two of ca_num, intermediate_num, or key_num.'
                     )
 
-                cert = ssl_crypto.X509()
-                cert.set_version(2) # the value 2 represents version 3
-                cert.get_subject().commonName = subject.encode()
-                cert.get_issuer().commonName = issuer.encode()
                 now = datetime.now(timezone.utc)
-                cert.set_notBefore(cls.datetime_to_asn1(now - timedelta(days=1)))
-                cert.set_notAfter(cls.datetime_to_asn1(now + timedelta(days=30)))
-                cert.add_extensions([
-                    ssl_crypto.X509Extension(b'basicConstraints',
-                                             True,
-                                             is_ca.encode()),
-                ])
-                cert.set_pubkey(pubkey)
-                cert.set_serial_number(90000 + (hash(cert_args) % 10000))
-                cert.sign(signkey, 'sha256')
+                pubkey = pubkey.public_key()
+                serial = 90000 + (hash(cert_args) % 10000)
+
+                builder = x509.CertificateBuilder()
+                builder = builder.subject_name(x509.Name([
+                    x509.NameAttribute(NameOID.COMMON_NAME, subject),
+                ]))
+                builder = builder.issuer_name(x509.Name([
+                    x509.NameAttribute(NameOID.COMMON_NAME, issuer),
+                ]))
+                builder = builder.not_valid_before(now - timedelta(days=1))
+                builder = builder.not_valid_after(now + timedelta(days=30))
+                builder = builder.add_extension(
+                    x509.BasicConstraints(ca=is_ca, path_length=None),
+                    critical=True,
+                )
+                builder = builder.public_key(pubkey)
+                builder = builder.serial_number(serial)
+                cert = builder.sign(private_key=signkey,
+                                    algorithm=crypto_hashes.SHA256())
                 certs[cert_args] = cert
             return certs[cert_args]
 

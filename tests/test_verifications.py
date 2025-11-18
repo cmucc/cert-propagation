@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta, timezone
+from cryptography.hazmat.primitives import serialization as crypto_serdes
 import OpenSSL.crypto as ssl_crypto
 import pytest
 import subprocess
@@ -157,7 +158,11 @@ class TestVerifications:
     foreach_verifier = pytest.mark.parametrize(
         'verifier',
         [
-            pytest.param(cr._verify_trust_python,
+            pytest.param(lambda config, cert_objects:
+                             cr._verify_trust_python(
+                                 config,
+                                 [ssl_crypto.X509.from_cryptography(cert_object)
+                                  for cert_object in cert_objects]),
                          id='python',
                          marks=pytest.mark.skipif(
                              not hasattr(ssl_crypto.X509Store, 'load_locations'),
@@ -166,19 +171,17 @@ class TestVerifications:
             pytest.param(lambda config, cert_objects:
                              cr._verify_trust_openssl_subprocess(
                                  config,
-                                 [ssl_crypto.dump_certificate(
-                                      ssl_crypto.FILETYPE_PEM,
-                                      cert_object).decode()
-                                 for cert_object in cert_objects]),
+                                 [cert_object.public_bytes(
+                                      crypto_serdes.Encoding.PEM).decode()
+                                  for cert_object in cert_objects]),
                         id='subprocess'),
         ]
     )
 
     def write_ca_file(self, ca_nums, path):
         path = path / 'CA_bundle.pem'
-        cadata = b''.join([ssl_crypto.dump_certificate(
-                               ssl_crypto.FILETYPE_PEM,
-                               self.get_cert(ca_num=ca_num))
+        cadata = b''.join([self.get_cert(ca_num=ca_num).
+                           public_bytes(crypto_serdes.Encoding.PEM)
                            for ca_num in ca_nums])
         with open(str(path), 'wb') as fd:
             fd.write(cadata)
@@ -187,8 +190,8 @@ class TestVerifications:
     def write_ca_directory(self, ca_nums, path):
         for ca_num in ca_nums:
             filename = path / 'CA{}.pem'.format(ca_num)
-            cadata = ssl_crypto.dump_certificate(ssl_crypto.FILETYPE_PEM,
-                                                 self.get_cert(ca_num=ca_num))
+            cadata = self.get_cert(ca_num=ca_num). \
+                     public_bytes(crypto_serdes.Encoding.PEM)
             with open(str(filename), 'wb') as fd:
                 fd.write(cadata)
         subprocess.check_call(['c_rehash', '-v', str(path)])
