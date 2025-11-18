@@ -509,6 +509,11 @@ def verify_certificate_matches_key(config, cert_object, key_object):
         raise
 
 def _verify_trust_python(config, cert_objects):
+    '''
+    Implementation of verify_certificate_issued_by_trusted_ca utilizing the
+    pyOpenSSL module's X509StoreContext.  It requires a pyOpenSSL that is
+    new enough to have the X509StoreContext.load_locations method.
+    '''
     store = ssl_crypto.X509Store()
     if 'ca_file' in config:
         store.load_locations(cafile=config['ca_file'], capath=None)
@@ -523,6 +528,10 @@ def _verify_trust_python(config, cert_objects):
                                       'CA:\n' + str(e))
 
 def _verify_trust_openssl_subprocess(config, certificates):
+    '''
+    Implementation of verify_certificate_issued_by_trusted_ca utilizing an
+    "openssl verify" subprocess.
+    '''
     cmd = ['openssl', 'verify']
     if 'ca_file' in config:
         cmd.append('-CAfile')
