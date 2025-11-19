@@ -404,22 +404,28 @@ class TestInstallation:
         chain.write_text('Chain\nMail\n')
         chain_bak.write_text('Boiled Leather\n')
         key.write_text('The Secret Key!\n')
+
         assert not key_bak.exists()
+
         certs_data = ['Another Certificate\n', 'Chain\n', 'Mail\n']
         key_data = 'Unlocker...\n'
         cr.install_files(config, certs_data, key_data)
+
         assert cert.read_text() == 'Another Certificate\n'
         assert cert_bak.read_text() == 'A Certificate\n'
+        # Intermediates did not change; hence no change to the content of
+        # the chain and chain_bak files.
         assert chain.read_text() == 'Chain\nMail\n'
-        # Retained with old content, since the intermediates did not change
         assert chain_bak.read_text() == 'Boiled Leather\n'
         assert key.read_text() == 'Unlocker...\n'
         assert key_bak.read_text() == 'The Secret Key!\n'
 
     def test_install_files_recovery_noexist_write_error(self, tmp_path):
         config = {}
+        _, _, _ = self.prepare_install_files(tmp_path, config)
+
         assert list(tmp_path.iterdir()) == [], 'Test should start with an empty data directory'
-        cert, chain, key = self.prepare_install_files(tmp_path, config)
+
         certs_data = ['data\n', 'data\n', 'data\n']
         key_data = 'data\n'
         real_write_one_file = cr.write_one_file
@@ -427,21 +433,20 @@ class TestInstallation:
              patch('cert_receive.write_one_file') as mock:
             mock.side_effect = self.failp_after(lambda n: n == 2, real_write_one_file)
             cr.install_files(config, certs_data, key_data)
-        assert not cert.exists()
-        assert not chain.exists()
-        assert not key.exists()
-        assert list(tmp_path.iterdir()) == []
+
+        assert list(tmp_path.iterdir()) == [], 'Test should complete with an empty data directory'
 
     def test_install_files_recovery_all_changing_write_error(self, tmp_path):
         config = {}
-        assert list(tmp_path.iterdir()) == [], 'Test should start with an empty data directory'
         cert, chain, key = self.prepare_install_files(tmp_path, config)
         cert.write_text('cert version 1\n')
         chain.write_text('chain version 1\n')
         key.write_text('key version 1\n')
+
         initial_files = [x.name for x in tmp_path.iterdir()]
         initial_files.sort()
         assert initial_files == ['cert', 'chain', 'key']
+
         certs_data = ['cert verison 2\n', 'chain version 2\n']
         key_data = 'key version 2\n'
         real_write_one_file = cr.write_one_file
@@ -449,26 +454,31 @@ class TestInstallation:
              patch('cert_receive.write_one_file') as mock:
             mock.side_effect = self.failp_after(lambda n: n == 3, real_write_one_file)
             cr.install_files(config, certs_data, key_data)
+
+        final_files = [x.name for x in tmp_path.iterdir()]
+        final_files.sort()
+        assert final_files == initial_files
+
         assert cert.read_text() == 'cert version 1\n'
         assert chain.read_text() == 'chain version 1\n'
         assert key.read_text() == 'key version 1\n'
-        assert sorted([x.name for x in tmp_path.iterdir()]) == initial_files
 
     def test_install_files_recovery_backup_error(self, tmp_path):
         config = {
             'bundle_intermediate': True,
             'intermediate_path': None,
         }
-        assert list(tmp_path.iterdir()) == [], 'Test should start with an empty data directory'
         cert, _, key = self.prepare_install_files(tmp_path, config)
         cert_bak, key_bak = self.make_backup_paths(cert, key)
         cert.write_text('alpha\nbravo\n')
         cert_bak.write_text('a\nb\n')
         key.write_text('kilo\n')
         key_bak.write_text('k\n')
+
         initial_files = [x.name for x in tmp_path.iterdir()]
         initial_files.sort()
         assert initial_files == ['cert', 'cert.bak', 'key', 'key.bak']
+
         certs_data = ['uno\n', 'dos\n']
         key_data = 'tres'
         real_backup_one_file = cr.backup_one_file
@@ -476,18 +486,21 @@ class TestInstallation:
              patch('cert_receive.backup_one_file') as mock:
             mock.side_effect = self.failp_after(lambda n: n == 1, real_backup_one_file)
             cr.install_files(config, certs_data, key_data)
-        assert cert.read_text() == 'alpha\nbravo\n'
-        assert not cert_bak.exists()
-        assert key.read_text() == 'kilo\n'
-        assert key_bak.read_text() == 'k\n'
+
         final_files = [x.name for x in tmp_path.iterdir()]
         final_files.sort()
         assert final_files == ['cert', 'key', 'key.bak']
 
+        assert cert.read_text() == 'alpha\nbravo\n'
+        assert key.read_text() == 'kilo\n'
+        assert key_bak.read_text() == 'k\n'
+
     def test_install_files_recovery_noexist_rename_error(self, tmp_path):
         config = {}
+        _, _, _ = self.prepare_install_files(tmp_path, config)
+
         assert list(tmp_path.iterdir()) == [], 'Test should start with an empty data directory'
-        cert, chain, key = self.prepare_install_files(tmp_path, config)
+
         certs_data = ['one\n', 'two\n']
         key_data = 'schlage\n'
         real_rename = os.rename
@@ -495,21 +508,20 @@ class TestInstallation:
              patch('os.rename') as mock:
             mock.side_effect = self.failp_before(lambda n: n == 3, real_rename)
             cr.install_files(config, certs_data, key_data)
-        assert not cert.exists()
-        assert not chain.exists()
-        assert not key.exists()
-        assert list(tmp_path.iterdir()) == []
+
+        assert list(tmp_path.iterdir()) == [], 'Test should complete with an empty data directory'
 
     def test_install_files_recovery_all_changing_rename_error(self, tmp_path):
         config = {}
-        assert list(tmp_path.iterdir()) == [], 'Test should start with an empty data directory'
         cert, chain, key = self.prepare_install_files(tmp_path, config)
         cert.write_text('original cert\n')
         chain.write_text('original chain\n')
         key.write_text('original key\n')
+
         initial_files = [x.name for x in tmp_path.iterdir()]
         initial_files.sort()
         assert initial_files == ['cert', 'chain', 'key']
+
         certs_data = ['cert1\n', 'cert2\n', 'cert3\n']
         key_data = 'key\n'
         real_rename = os.rename
@@ -517,24 +529,29 @@ class TestInstallation:
              patch('os.rename') as mock:
             mock.side_effect = self.failp_before(lambda n: n == 3, real_rename)
             cr.install_files(config, certs_data, key_data)
+
+        final_files = [x.name for x in tmp_path.iterdir()]
+        final_files.sort()
+        assert final_files == initial_files
+
         assert cert.read_text() == 'original cert\n'
         assert chain.read_text() == 'original chain\n'
         assert key.read_text() == 'original key\n'
-        assert sorted([x.name for x in tmp_path.iterdir()]) == initial_files
 
     def test_install_files_recovery_one_changing_rename_error(self, tmp_path):
         config = {}
-        assert list(tmp_path.iterdir()) == [], 'Test should start with an empty data directory'
         cert, chain, key = self.prepare_install_files(tmp_path, config)
-        cert_bak, chain_bak, key_bak = self.make_backup_paths(cert, chain, key)
+        cert_bak, chain_bak = self.make_backup_paths(cert, chain)
         cert.write_text('My second certificate\n')
         cert_bak.write_text('My first certificate\n')
         chain.write_text('My intermediate\n')
         chain_bak.write_text('My old intermediate\n')
         key.write_text('My first key\n')
+
         initial_files = [x.name for x in tmp_path.iterdir()]
         initial_files.sort()
         assert initial_files == ['cert', 'cert.bak', 'chain', 'chain.bak', 'key']
+
         certs_data = ['My third certificate\n', 'My intermediate\n']
         key_data = 'My first key\n'
         real_rename = os.rename
@@ -542,14 +559,15 @@ class TestInstallation:
              patch('os.rename') as mock:
             mock.side_effect = self.failp_before(lambda n: n == 3, real_rename)
             cr.install_files(config, certs_data, key_data)
-        assert cert.read_text() == 'My second certificate\n'
-        assert not cert_bak.exists()
-        assert chain.read_text() == 'My intermediate\n'
-        assert chain_bak.read_text() == 'My old intermediate\n'
-        assert key.read_text() == 'My first key\n'
+
         final_files = [x.name for x in tmp_path.iterdir()]
         final_files.sort()
         assert final_files == ['cert', 'chain', 'chain.bak', 'key']
+
+        assert cert.read_text() == 'My second certificate\n'
+        assert chain.read_text() == 'My intermediate\n'
+        assert chain_bak.read_text() == 'My old intermediate\n'
+        assert key.read_text() == 'My first key\n'
 
     def test_install_files_recovery_error_rename(self, tmp_path):
         config = {}
@@ -561,9 +579,11 @@ class TestInstallation:
         chain_bak.write_text('V I\n')
         key.write_text('progression\n')
         key_bak.write_text('cadence\n')
+
         initial_files = [x.name for x in tmp_path.iterdir()]
         initial_files.sort()
         assert initial_files == ['cert', 'cert.bak', 'chain', 'chain.bak', 'key', 'key.bak']
+
         certs_data = ['c minor\n', 'V VI\n']
         key_data = 'deceptive\n'
         real_rename = os.rename
@@ -572,24 +592,27 @@ class TestInstallation:
             # Fail installing key, and only succeed recovering cert
             mock.side_effect = self.failp_before(lambda n: n == 3 or n >= 5, real_rename)
             cr.install_files(config, certs_data, key_data)
-        assert cert.read_text() == 'C maj.\n'
-        assert not cert_bak.exists()
-        assert chain.read_text() == 'V VI\n'
-        assert chain_bak.read_text() == 'IV V I\n'
-        assert key.read_text() == 'progression\n'
-        # Backup of unchanged key is not deleted because of recovery error
-        assert key_bak.read_text() == 'progression\n'
+
         final_files = [x.name for x in tmp_path.iterdir()]
         final_files.sort()
         assert final_files == ['cert', 'chain', 'chain.bak', 'key', 'key.bak']
+
+        assert cert.read_text() == 'C maj.\n'
+        assert chain.read_text() == 'V VI\n'
+        assert chain_bak.read_text() == 'IV V I\n'
+        assert key.read_text() == 'progression\n'
+        # Backup of unchanged key is not deleted because of the recovery error
+        assert key_bak.read_text() == 'progression\n'
 
     def test_install_files_recovery_error_unlink_no_existing(self, tmp_path):
         config = {
             'bundle_intermediate': True,
             'intermediate_path': None,
         }
+        cert, _, _ = self.prepare_install_files(tmp_path, config)
+
         assert list(tmp_path.iterdir()) == [], 'Test should start with an empty data directory'
-        cert, _, key = self.prepare_install_files(tmp_path, config)
+
         certs_data = ['H: Hydrogen\n', 'He: Helium\n']
         key_data = 'K: Potassium\n'
         real_rename, real_unlink = os.rename, os.unlink
@@ -598,11 +621,12 @@ class TestInstallation:
             mock_rename.side_effect = self.failp_before(lambda n: n == 2, real_rename)
             mock_unlink.side_effect = self.failp_before(lambda n: n == 2, real_unlink)
             cr.install_files(config, certs_data, key_data)
-        assert cert.read_text() == 'H: Hydrogen\nHe: Helium\n'
-        assert not key.exists()
+
         final_files = [x.name for x in tmp_path.iterdir()]
         final_files.sort()
         assert final_files == ['cert']
+
+        assert cert.read_text() == 'H: Hydrogen\nHe: Helium\n'
 
     def test_install_files_recovery_error_unlink_tmpfile(self, tmp_path):
         config = {}
@@ -614,9 +638,11 @@ class TestInstallation:
         chain_bak.write_text('Poultry\n')
         key.write_text('Pear\n')
         key_bak.write_text('Turkey\n')
+
         initial_files = [x.name for x in tmp_path.iterdir()]
         initial_files.sort()
         assert initial_files == ['cert', 'cert.bak', 'chain', 'chain.bak', 'key', 'key.bak']
+
         certs_data = ['Orange\n','Citrus\n']
         key_data = 'Lime\n'
         real_write_one_file, real_unlink = cr.write_one_file, os.unlink
@@ -626,12 +652,7 @@ class TestInstallation:
             mock_write.side_effect = self.failp_after(lambda n: n == 2, real_write_one_file)
             mock_unlink.side_effect = self.failp_before(lambda n: n == 1, real_unlink)
             cr.install_files(config, certs_data, key_data)
-        assert cert.read_text() == 'Apple\n'
-        assert cert_bak.read_text() == 'Chicken\n'
-        assert chain.read_text() == 'Pome\n'
-        assert chain_bak.read_text() == 'Poultry\n'
-        assert key.read_text() == 'Pear\n'
-        assert key_bak.read_text() == 'Turkey\n'
+
         expected_files = initial_files[0:]
         expected_files.append('cert.new-{}'.format(os.getpid()))
         expected_files.sort()
@@ -639,18 +660,27 @@ class TestInstallation:
         final_files.sort()
         assert final_files == expected_files
 
+        assert cert.read_text() == 'Apple\n'
+        assert cert_bak.read_text() == 'Chicken\n'
+        assert chain.read_text() == 'Pome\n'
+        assert chain_bak.read_text() == 'Poultry\n'
+        assert key.read_text() == 'Pear\n'
+        assert key_bak.read_text() == 'Turkey\n'
+
     def test_install_files_recovery_error_unlink_backup(self, tmp_path):
         config = {
             'bundle_intermediate': True,
             'intermediate_path': None,
         }
         cert, _, key = self.prepare_install_files(tmp_path, config)
-        cert_bak, key_bak = self.make_backup_paths(cert, key)
+        key_bak, = self.make_backup_paths(key)
         cert.write_text('Hola!\n')
         key.write_text('Hello.\n')
+
         initial_files = [x.name for x in tmp_path.iterdir()]
         initial_files.sort()
         assert initial_files == ['cert', 'key']
+
         certs_data = ['Adios.\n']
         key_data = 'Good bye.\n'
         real_rename, real_unlink = os.rename, os.unlink
@@ -659,12 +689,14 @@ class TestInstallation:
             mock_rename.side_effect = self.failp_before(lambda n: n == 2, real_rename)
             mock_unlink.side_effect = self.failp_before(lambda n: n == 2, real_unlink)
             cr.install_files(config, certs_data, key_data)
-        assert cert.read_text() == 'Hola!\n'
-        assert key.read_text() == 'Hello.\n'
-        assert key_bak.read_text() == 'Hello.\n'
+
         final_files = [x.name for x in tmp_path.iterdir()]
         final_files.sort()
         assert final_files == ['cert', 'key', 'key.bak']
+
+        assert cert.read_text() == 'Hola!\n'
+        assert key.read_text() == 'Hello.\n'
+        assert key_bak.read_text() == 'Hello.\n'
 
     def test_install_files_recovery_error_unlink_bad_backup(self, tmp_path):
         config = {
@@ -673,11 +705,12 @@ class TestInstallation:
             'intermediate_path': None,
         }
         cert, _, _ = self.prepare_install_files(tmp_path, config)
-        cert_bak, = self.make_backup_paths(cert)
         cert.write_text('smoosh\ncrunch\n')
+
         initial_files = [x.name for x in tmp_path.iterdir()]
         initial_files.sort()
         assert initial_files == ['cert']
+
         certs_data = ['crunchier\n']
         key_data = 'smooshier\n'
         real_backup_one_file, real_unlink = cr.backup_one_file, os.unlink
@@ -687,7 +720,9 @@ class TestInstallation:
             mock_backup.side_effect = self.failp_after(lambda n: n == 1, real_backup_one_file)
             mock_unlink.side_effect = self.failp_before(lambda n: n == 2, real_unlink)
             cr.install_files(config, certs_data, key_data)
-        assert cert.read_text() == 'smoosh\ncrunch\n'
+
         final_files = [x.name for x in tmp_path.iterdir()]
         final_files.sort()
         assert final_files == ['cert', 'cert.bak']
+
+        assert cert.read_text() == 'smoosh\ncrunch\n'
