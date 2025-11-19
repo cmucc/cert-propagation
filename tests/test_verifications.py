@@ -1,9 +1,10 @@
 from datetime import datetime, timedelta, timezone
+import subprocess
+from unittest.mock import Mock
+
 from cryptography.hazmat.primitives import serialization as crypto_serdes
 import OpenSSL.crypto as ssl_crypto
 import pytest
-import subprocess
-from unittest.mock import Mock
 
 import cert_receive as cr
 

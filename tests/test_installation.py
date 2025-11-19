@@ -2,19 +2,19 @@ import grp
 import os
 from pathlib import Path
 import pwd
-import pytest
-import re
 import stat
 import sys
 import time
 from unittest.mock import patch
+
+import pytest
 
 import cert_receive as cr
 
 class TestInstallation:
     @staticmethod
     def add_defaults_and_process_config(config):
-        for key, value in cr.CFG_DEFAULT_SETTINGS.items():
+        for key in cr.CFG_DEFAULT_SETTINGS:
             if key in config:
                 continue
             if key.startswith('verify_'):
@@ -115,10 +115,11 @@ class TestInstallation:
             try:
                 pwent = pwd.getpwnam(user_name)
                 uid = pwent.pw_uid
+                break
             except KeyError:
                 pass
         else:
-            pytest.mark.xfail('Could not find a user name to test with')
+            pytest.xfail('Could not find a user name to test with')
         path = tmp_path / 'my_certificate.pem'
         config = {
             'certificate_path': str(path),
@@ -157,10 +158,11 @@ class TestInstallation:
             try:
                 grent = grp.getgrnam(group_name)
                 gid = grent.gr_gid
+                break
             except KeyError:
                 pass
         else:
-            pytest.mark.xfail('Could not find a group name to test with')
+            pytest.xfail('Could not find a group name to test with')
         path = tmp_path / 'my_private_key.pem'
         config = {
             'certificate_path': 'dummy',
@@ -261,8 +263,7 @@ class TestInstallation:
         def my_repr(o):
             if o is None or isinstance(o, (bytes, float, int, str, type)):
                 return repr(o)
-            else:
-                return '<{} {:#x}>'.format(type(o).__name__, id(o))
+            return '<{} {:#x}>'.format(type(o).__name__, id(o))
 
         return '{}({})'.format(
             name,
