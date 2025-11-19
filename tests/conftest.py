@@ -1,10 +1,11 @@
 from collections import namedtuple
+from datetime import datetime, timedelta, timezone
+import os.path
+
 from cryptography import x509
 from cryptography.hazmat.primitives \
         import serialization as crypto_serdes, hashes as crypto_hashes
 from cryptography.x509.oid import NameOID
-from datetime import datetime, timedelta, timezone
-import os.path
 import pytest
 
 @pytest.fixture(scope='session')
