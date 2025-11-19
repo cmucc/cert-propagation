@@ -307,6 +307,14 @@ class TestInstallation:
             return real_func(*args, **kwargs)
         return side_effect
 
+    @staticmethod
+    def raises_update_failed_exception(inconsistent=False):
+        if inconsistent:
+            pattern = r'\binconsistent\b'
+        else:
+            pattern = r'(?s)^(?!.*\binconsistent\b).*$'
+        return pytest.raises(cr.UpdateFailedException, match=pattern)
+
     def test_install_files_default(self, tmp_path):
         config = {}
         cert, chain, key = self.prepare_install_files(tmp_path, config)
@@ -415,14 +423,10 @@ class TestInstallation:
         certs_data = ['data\n', 'data\n', 'data\n']
         key_data = 'data\n'
         real_write_one_file = cr.write_one_file
-        with patch('cert_receive.write_one_file') as mock:
+        with self.raises_update_failed_exception(), \
+             patch('cert_receive.write_one_file') as mock:
             mock.side_effect = self.failp_after(lambda n: n == 2, real_write_one_file)
-            try:
-                cr.install_files(config, certs_data, key_data)
-            except cr.UpdateFailedException as e:
-                assert not re.search(r'\binconsistent\b', str(e))
-            else:
-                assert False, 'Expected an exception due to fault injection'
+            cr.install_files(config, certs_data, key_data)
         assert not cert.exists()
         assert not chain.exists()
         assert not key.exists()
@@ -441,14 +445,10 @@ class TestInstallation:
         certs_data = ['cert verison 2\n', 'chain version 2\n']
         key_data = 'key version 2\n'
         real_write_one_file = cr.write_one_file
-        with patch('cert_receive.write_one_file') as mock:
+        with self.raises_update_failed_exception(), \
+             patch('cert_receive.write_one_file') as mock:
             mock.side_effect = self.failp_after(lambda n: n == 3, real_write_one_file)
-            try:
-                cr.install_files(config, certs_data, key_data)
-            except cr.UpdateFailedException as e:
-                assert not re.search(r'\binconsistent\b', str(e))
-            else:
-                assert False, 'Expected an exception due to fault injection'
+            cr.install_files(config, certs_data, key_data)
         assert cert.read_text() == 'cert version 1\n'
         assert chain.read_text() == 'chain version 1\n'
         assert key.read_text() == 'key version 1\n'
@@ -472,14 +472,10 @@ class TestInstallation:
         certs_data = ['uno\n', 'dos\n']
         key_data = 'tres'
         real_backup_one_file = cr.backup_one_file
-        with patch('cert_receive.backup_one_file') as mock:
+        with self.raises_update_failed_exception(), \
+             patch('cert_receive.backup_one_file') as mock:
             mock.side_effect = self.failp_after(lambda n: n == 1, real_backup_one_file)
-            try:
-                cr.install_files(config, certs_data, key_data)
-            except cr.UpdateFailedException as e:
-                assert not re.search(r'\binconsistent\b', str(e))
-            else:
-                assert False, 'Expected an exception due to fault injection'
+            cr.install_files(config, certs_data, key_data)
         assert cert.read_text() == 'alpha\nbravo\n'
         assert not cert_bak.exists()
         assert key.read_text() == 'kilo\n'
@@ -495,14 +491,10 @@ class TestInstallation:
         certs_data = ['one\n', 'two\n']
         key_data = 'schlage\n'
         real_rename = os.rename
-        with patch('os.rename') as mock:
+        with self.raises_update_failed_exception(), \
+             patch('os.rename') as mock:
             mock.side_effect = self.failp_before(lambda n: n == 3, real_rename)
-            try:
-                cr.install_files(config, certs_data, key_data)
-            except cr.UpdateFailedException as e:
-                assert not re.search(r'\binconsistent\b', str(e))
-            else:
-                assert False, 'Expected an exception due to fault injection'
+            cr.install_files(config, certs_data, key_data)
         assert not cert.exists()
         assert not chain.exists()
         assert not key.exists()
@@ -521,14 +513,10 @@ class TestInstallation:
         certs_data = ['cert1\n', 'cert2\n', 'cert3\n']
         key_data = 'key\n'
         real_rename = os.rename
-        with patch('os.rename') as mock:
+        with self.raises_update_failed_exception(), \
+             patch('os.rename') as mock:
             mock.side_effect = self.failp_before(lambda n: n == 3, real_rename)
-            try:
-                cr.install_files(config, certs_data, key_data)
-            except cr.UpdateFailedException as e:
-                assert not re.search(r'\binconsistent\b', str(e))
-            else:
-                assert False, 'Expected an exception due to fault injection'
+            cr.install_files(config, certs_data, key_data)
         assert cert.read_text() == 'original cert\n'
         assert chain.read_text() == 'original chain\n'
         assert key.read_text() == 'original key\n'
@@ -550,14 +538,10 @@ class TestInstallation:
         certs_data = ['My third certificate\n', 'My intermediate\n']
         key_data = 'My first key\n'
         real_rename = os.rename
-        with patch('os.rename') as mock:
+        with self.raises_update_failed_exception(), \
+             patch('os.rename') as mock:
             mock.side_effect = self.failp_before(lambda n: n == 3, real_rename)
-            try:
-                cr.install_files(config, certs_data, key_data)
-            except cr.UpdateFailedException as e:
-                assert not re.search(r'\binconsistent\b', str(e))
-            else:
-                assert False, 'Expected an exception due to fault injection'
+            cr.install_files(config, certs_data, key_data)
         assert cert.read_text() == 'My second certificate\n'
         assert not cert_bak.exists()
         assert chain.read_text() == 'My intermediate\n'
@@ -583,16 +567,11 @@ class TestInstallation:
         certs_data = ['c minor\n', 'V VI\n']
         key_data = 'deceptive\n'
         real_rename = os.rename
-        with patch('os.rename') as mock:
-            # Fail installing key, and only can recover cert
+        with self.raises_update_failed_exception(inconsistent=True), \
+             patch('os.rename') as mock:
+            # Fail installing key, and only succeed recovering cert
             mock.side_effect = self.failp_before(lambda n: n == 3 or n >= 5, real_rename)
-            try:
-                cr.install_files(config, certs_data, key_data)
-            except cr.UpdateFailedException as e:
-                assert re.search(r'\binconsistent\b', str(e)), \
-                       'Expected an indication that certificates/keys may be in an inconsistent state'
-            else:
-                assert False, 'Expected an exception due to fault injection'
+            cr.install_files(config, certs_data, key_data)
         assert cert.read_text() == 'C maj.\n'
         assert not cert_bak.exists()
         assert chain.read_text() == 'V VI\n'
@@ -614,16 +593,11 @@ class TestInstallation:
         certs_data = ['H: Hydrogen\n', 'He: Helium\n']
         key_data = 'K: Potassium\n'
         real_rename, real_unlink = os.rename, os.unlink
-        with patch('os.rename') as mock_rename, patch('os.unlink') as mock_unlink:
+        with self.raises_update_failed_exception(inconsistent=True), \
+             patch('os.rename') as mock_rename, patch('os.unlink') as mock_unlink:
             mock_rename.side_effect = self.failp_before(lambda n: n == 2, real_rename)
             mock_unlink.side_effect = self.failp_before(lambda n: n == 2, real_unlink)
-            try:
-                cr.install_files(config, certs_data, key_data)
-            except cr.UpdateFailedException as e:
-                assert re.search(r'\binconsistent\b', str(e)), \
-                       'Expected an indication that certificates/keys may be in an inconsistent state'
-            else:
-                assert False, 'Expected an exception due to fault injection'
+            cr.install_files(config, certs_data, key_data)
         assert cert.read_text() == 'H: Hydrogen\nHe: Helium\n'
         assert not key.exists()
         final_files = [x.name for x in tmp_path.iterdir()]
@@ -646,16 +620,12 @@ class TestInstallation:
         certs_data = ['Orange\n','Citrus\n']
         key_data = 'Lime\n'
         real_write_one_file, real_unlink = cr.write_one_file, os.unlink
-        with patch('cert_receive.write_one_file') as mock_write, \
+        with self.raises_update_failed_exception(inconsistent=False), \
+             patch('cert_receive.write_one_file') as mock_write, \
              patch('os.unlink') as mock_unlink:
             mock_write.side_effect = self.failp_after(lambda n: n == 2, real_write_one_file)
             mock_unlink.side_effect = self.failp_before(lambda n: n == 1, real_unlink)
-            try:
-                cr.install_files(config, certs_data, key_data)
-            except cr.UpdateFailedException as e:
-                assert not re.search(r'\binconsistent\b', str(e))
-            else:
-                assert False, 'Expected an exception due to fault injection'
+            cr.install_files(config, certs_data, key_data)
         assert cert.read_text() == 'Apple\n'
         assert cert_bak.read_text() == 'Chicken\n'
         assert chain.read_text() == 'Pome\n'
@@ -684,15 +654,11 @@ class TestInstallation:
         certs_data = ['Adios.\n']
         key_data = 'Good bye.\n'
         real_rename, real_unlink = os.rename, os.unlink
-        with patch('os.rename') as mock_rename, patch('os.unlink') as mock_unlink:
+        with self.raises_update_failed_exception(inconsistent=False), \
+             patch('os.rename') as mock_rename, patch('os.unlink') as mock_unlink:
             mock_rename.side_effect = self.failp_before(lambda n: n == 2, real_rename)
             mock_unlink.side_effect = self.failp_before(lambda n: n == 2, real_unlink)
-            try:
-                cr.install_files(config, certs_data, key_data)
-            except cr.UpdateFailedException as e:
-                assert not re.search(r'\binconsistent\b', str(e))
-            else:
-                assert False, 'Expected an exception due to fault injection'
+            cr.install_files(config, certs_data, key_data)
         assert cert.read_text() == 'Hola!\n'
         assert key.read_text() == 'Hello.\n'
         assert key_bak.read_text() == 'Hello.\n'
@@ -715,17 +681,12 @@ class TestInstallation:
         certs_data = ['crunchier\n']
         key_data = 'smooshier\n'
         real_backup_one_file, real_unlink = cr.backup_one_file, os.unlink
-        with patch('cert_receive.backup_one_file') as mock_backup, \
+        with self.raises_update_failed_exception(inconsistent=True), \
+             patch('cert_receive.backup_one_file') as mock_backup, \
              patch('os.unlink') as mock_unlink:
             mock_backup.side_effect = self.failp_after(lambda n: n == 1, real_backup_one_file)
             mock_unlink.side_effect = self.failp_before(lambda n: n == 2, real_unlink)
-            try:
-                cr.install_files(config, certs_data, key_data)
-            except cr.UpdateFailedException as e:
-                assert re.search(r'\binconsistent\b', str(e)), \
-                       'Expected an indication that certificates/keys may be in an inconsistent state'
-            else:
-                assert False, 'Expected an exception due to fault injection'
+            cr.install_files(config, certs_data, key_data)
         assert cert.read_text() == 'smoosh\ncrunch\n'
         final_files = [x.name for x in tmp_path.iterdir()]
         final_files.sort()
