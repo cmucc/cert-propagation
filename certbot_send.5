@@ -1,0 +1,99 @@
+.TH CERTBOT_SEND "5" "December 2025" "certbot_send.sh 0.3" "File Formats and Configuration"
+.SH NAME
+certbot_send \- configuration directory for
+.I \%certbot_send.sh
+.
+.\" ========================================================================
+.SH DESCRIPTION
+.\" ========================================================================
+The
+.MR certbot_send.sh 8
+script reads its configuration from one or more configuration files.  By
+default, it searches for configuration files in the \%\(lq/etc/\:\
+certbot_send\(rq directory.  An invocation of the script for
+.I \%config_name
+will read configuration variables from
+\%\(lq/etc/\:certbot_send/\:defaults\(rq and
+.RI \%\(lq/etc/\:certbot_send/\: config_name .conf\(rq
+with values set in the latter overriding anything from the former.
+The specific files the script reads from can be modified by including one or
+more of the
+.BR \%\-\-config\-dir ,
+.BR \%\-\-config\-file ,
+.BR \%\-\-defaults\-file ,
+and
+.B \%\-\-no\-defaults\-file
+options when invoking
+.IR \%certbot_send.sh .
+.P
+Each configuration file should be an
+.MR sh 1
+script snippet defining one or more variables.  The following variables are
+recognized:
+.
+.TP
+.B hostname
+Hostname or a whitespace-separated list of hostnames to which certificate
+and key data should be sent.  Required.
+.
+.TP
+.B sshconfig
+Path to an
+.MR ssh_config 5
+file to use when connecting to remote hosts.  Non-absolute paths are
+looked-up relative to the configuration directory.  The default value is
+\%\(lqssh_config\(rq if the file exists.  Otherwise,
+.MR ssh 1
+will not be invoked with an
+.B \-F
+option, causing its default configuration to be used.
+.
+.TP
+.B sshkey
+Path to a private key in OpenSSH format to use when connecting to remote
+hosts.  Non-absolute paths are looked-up relative to the configuration
+directory.  If not specified,
+.I ssh
+will not be invoked with an
+.BR \%\-o\~IdentityFile= .\|.\|.\&
+option.
+.
+.TP
+.B timeout
+Timeout to use when invoking
+.MR cert_receive.py 8
+via
+.IR ssh .
+\%SIGTERM is sent after the specified number of seconds.  At that point, if
+the process does not terminate within 10 seconds, \%SIGKILL is sent.
+Default is 90 seconds.
+.
+.\" ========================================================================
+.SH FILES
+.\" ========================================================================
+.TP
+\%/etc/\:certbot_send
+default configuration directory
+.TP
+.IR \%config_dir /\: config_name .conf
+file for variable settings for
+.I \%config_name
+.
+.TP
+.IR \%config_dir /\:defaults
+defaults file for variable settings that will apply for any
+.I \%config_name
+that does not otherwise override the settings
+.TP
+.IR \%config_dir /\:ssh_config
+default
+.I \%ssh_config
+file
+.
+.\" ========================================================================
+.SH SEE ALSO
+.\" ========================================================================
+.MR certbot_send.sh 8 ,
+.MR sh 1 ,
+.MR ssh 1 ,
+.MR ssh_config 5
