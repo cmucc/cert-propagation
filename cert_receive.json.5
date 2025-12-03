@@ -1,0 +1,368 @@
+.TH CERT_RECEIVE.JSON "5" "December 2025" "cert_receive.py 0.3" "File Formats and Configuration"
+.SH NAME
+cert_receive.json \- configuration file for
+.I \%cert_receive.py
+.
+.\" ========================================================================
+.SH DESCRIPTION
+.\" ========================================================================
+The
+.MR cert_receive.py 8
+script reads a configuration file describing how it should validate and
+install certificates, \%\(lq/etc/\:cert_receive.json\(rq by default.  A
+different configuration file can be specified by including a
+.B \%\-\-config\-file
+option during the script's invocation.  A configuration file can be
+validated by including the
+.B \%\-\-check-config
+option.
+.P
+The configuration file is in JSON format and should contain an object at its
+top level.  JSON does not support comments, but
+.I \%cert_receive.py
+will ignore any key and the associated value if the key name begins with a
+.B #
+character.  Since this is not a true comment, the associated value must
+still be syntactically valid JSON.  Each key of the top-level object is a
+.I \%config_name
+and the object's values are sub-objects describing the details of how
+incoming certificates and private keys associated with the
+.I \%config_name
+should be installed.  The following sub-sections of this manual describe the
+keys that may be defined within these sub-objects and how
+.I \%cert_receive.py
+interprets them.
+.
+.\" ========================================================================
+.SS File Installation
+.
+The following settings control the file system location of the files
+.I \%cert_receieve.py
+installs.
+.
+.TP
+.B \%certificate_path
+.TQ
+.B \%intermediate_path
+.TQ
+.B \%key_path
+The location where the applicable data is written.  The
+.I \%certificate_path
+is always required.  The
+.I \%intermediate_path
+and
+.I \%key_path
+should only be included when
+.I \%bundle_intermediates
+and
+.I \%bundle_key
+are
+.BR false ,
+respectively.
+.IP
+type: string
+.
+.P
+The following group, owner, and permission settings for certificates apply
+to installed files that
+.I only
+contain certificate data.  On the other hand, the following corresponding
+settings for keys apply to
+.I any
+file containing private key data.  This means that the key settings are
+applied to the
+.I \%certificate_path
+when
+.I \%bundle_key
+is
+.BR true !
+.
+.TP
+.B certificate_group
+.TQ
+.B key_group
+The UNIX group to apply to files containing certificate and key data,
+respectively.  If the value begins with a
+.B #
+character, the remaining characters are interpreted as a numeric group ID.
+Otherwise, the entire value is looked-up as a group name, via a
+.MR getgrnam 3
+call.  If this look-up succeeds, the group ID associated with the group
+entry is used.  If the look-up fails but the entire value is numeric, the
+value is used as a group ID.
+.IP
+\%type:\~string, \%default:\~\(dqroot\(dq
+.
+.TP
+.B certificate_owner
+.TQ
+.B key_owner
+The UNIX owner to apply to files containing certificate and key data,
+respectively.  If the value begins with a
+.B #
+character, the remaining characters are interpreted as a numeric user ID.
+Otherwise, the entire value is looked-up as a user name, via a
+.MR getpwnam 3
+call.  If this look-up succeeds, the user ID associated with the passwd
+entry is used.  If the look-up fails but the entire value is numeric, the
+value is used as a user ID.
+.IP
+\%type:\~string, \%default:\~\(dqroot\(dq
+.
+.TP
+.B certificate_perms
+The UNIX permissions to set on files that only contain certificate data.
+Interpreted as an octal number.
+.IP
+\%type:\~string, \%default:\~\(dq0644\(dq
+.
+.TP
+.B key_perms
+The UNIX permissions to set on any file that contains private key data.
+Interpreted as an octal number.
+.IP
+\%type:\~string, \%default:\~\(dq0600\(dq
+.
+.P
+The following settings configure
+.I \%cert_receive.py
+to execute a command after all files are successfully written.  The command
+can be used to ensure the associated service loads any new certificate and
+private key data.
+.
+.TP
+.B reload_command
+The command to execute.  Passed as a
+.B -c
+argument to
+.BR /bin/sh ,
+meaning that shell special characters, keywords, and built-ins will be
+interpreted unless appropriately escaped.
+.IP
+\%type:\~string
+.
+.TP
+.B reload_timeout
+Timeout to use when executing
+.IR reload_command .
+\%SIGTERM is sent after the specified number of seconds.  At that point, if
+the command does not terminate within 10 seconds, \%SIGKILL is sent.
+.IP
+\%type:\~integer, \%default:\~50
+.
+.\" ========================================================================
+.SS File Format
+.
+The following settings control the layout/format of data within the
+installed files.
+.
+.TP
+.B bundle_intermediate
+When
+.BR true ,
+intermediate certificates are written to
+.I \%certificate_path
+together with the application certificate.
+.IP
+\%type:\~boolean, \%default:\~false
+.
+.TP
+.B bundle_key
+When
+.BR true ,
+private key data is written to
+.I \%certificate_path
+together with the application certificate.
+.IP
+\%type:\~boolean, \%default:\~false
+.
+.TP
+.B bundle_order
+Specifies the order in which data is written to
+.I \%certificate_path
+when
+.I bundle_key
+is
+.BR true.
+.IP
+\%type:\~string \%{\(dqkey_first\(dq|\(dqkey_last\(dq},
+\%default:\~\(dqkey_first\(dq
+.
+.TP
+.B intermediate_order
+Specifies the order in which data is written to
+.I \%intermediate_path
+.RI ( \%certificate_path
+when
+.I \%bundle_intermediate
+is
+.BR true ).
+.IP
+\%type:\~string \%{\(dqca_first\(dq|\(dqca_last\(dq},
+\%default:\~\(dqca_last\(dq
+.
+.\" ========================================================================
+.SS Certificate Validation
+.
+The following settings control the validations
+.I \%cert_receive.py
+performs against incoming certificates.
+.
+.TP
+.B ca_file
+A file containing trusted CA certificates.  Used when the
+.I \%verify_trusted_ca
+setting is
+.BR true .
+.IP
+\%type:\~string, default: value of the
+.B \%\-\-ca\-file
+option if provided to
+.I \%cert_receieve.py
+.
+.TP
+.B ca_path
+A directory containing trusted CA certificates.  Files within the directory
+should be named with the hash value of the X.509 SubjectName of the
+contained certificate.  Used when the
+.I \%verify_trusted_ca
+setting is
+.BR true .
+.IP
+\%type:\~string, default: value of the
+.B \%\-\-ca\-path
+option if provided to
+.I \%cert_receive.py
+or \%\(dq/etc/\:ssl/\:certs\(dq unless the
+.B \%\-\-no\-ca\-path
+option was provided
+.
+.TP
+.B expected_subject_cn
+The X.509 subject CommonName expected for the application certificate.
+Required when
+.I \%verify_subject_cn
+is
+.BR true .
+.IP
+\%type:\~string
+.
+.TP
+.B openssl_ciphers
+The OpenSSL cipher preference list to use when the
+.I \%verify_trusted_ca
+setting is
+.BR true .
+This is mostly useful for including a
+.BI \%@SECLEVEL= N
+directive to adjust the security level required for encryption algorithms,
+hash algorithms, and key lengths.
+.IP
+\%type:\~string
+.
+.TP
+.B verify_chain
+Reject the incoming certificates unless they form a chain.  I.e., the issuer
+of the first certificate is the subject of the second, the issuer of the
+second certificate is the subject of the third, etc.
+.IP
+\%type:\~boolean, \%default: true
+.
+.TP
+.B verify_dates
+Reject the incoming certificates unless they are all currently valid.
+.IP
+\%type:\~boolean, \%default: true
+.
+.TP
+.B verify_loadable
+Reject the incoming certificates unless they can successfully be parsed and
+loaded by pyOpenSSL.
+.IP
+\%type:\~boolean, \%default: true
+.
+.TP
+.B verify_matching_key
+Reject the incoming application certificate unless it provides a public key
+that matches the application's private key.
+.IP
+\%type:\~boolean, \%default: true
+.
+.TP
+.B verify_subject_cn
+Reject the incoming application certificate unless its X.509 subject
+CommonName is the value of the
+.I \%expected_subject_cn
+setting.
+.IP
+\%type:\~boolean, \%default: true
+.
+.TP
+.B verify_trusted_ca
+Reject the incoming application certificate unless it can be validated by a
+trusted CA certificate.  The set of trusted CA certificates can be adjusted
+by using the
+.I \%ca_file
+and
+.I \%ca_path
+settings.
+.IP
+\%type:\~boolean, \%default: true
+.
+.\" ========================================================================
+.SH EXAMPLE
+.\" ========================================================================
+.EX
+{
+    "#": "configuration for Apache httpd on Debian",
+    "apache": {
+        "certificate_path": "/etc/apache2/ssl.crt/cert.pem",
+        "intermediate_path": "/etc/apache2/ssl.crt/chain.pem",
+        "key_path": "/etc/apache2/ssl.key/privkey.pem",
+        "reload_command": "apache2ctl -k graceful",
+        "expected_subject_cn": "www.example.org"
+    },
+
+    "#": "configuration for qmail-smtpd",
+    "qmail": {
+        "certificate_path": "/qmail/control/servercert.pem",
+        "key_owner": "qmaild",
+        "key_group": "qmail",
+        "reload_command": "svc -du /service/smtp",
+        "bundle_key": true,
+        "bundle_intermediate": true,
+        "expected_subject_cn": "smtp.example.org"
+    }
+}
+.EE
+.
+.\" ========================================================================
+.SH FILES
+.\" ========================================================================
+.TP
+\%/etc/\:cert_receive.json
+default
+.I \%cert_receive.py
+configuration file
+.
+.TP
+\%/etc/ssl/certs
+default
+.I \%ca_path
+used when the
+.I \%verify_trusted_ca
+setting
+is
+.B true
+.
+.\" ========================================================================
+.SH SEE ALSO
+.\" ========================================================================
+.UR \%https://\:ecma-international.org/\:publications-and-standards/\:standards/\:ecma-404/
+.IR "ECMA-404: The JSON data interchange syntax" ,
+2nd edition, December 2017.
+.UE
+.P
+.MR cert_receive.py 8 ,
+.MR c_rehash 1ssl ,
+.MR openssl-ciphers 1ssl

@@ -137,10 +137,10 @@ CFG_VALID_SETTINGS = {
     'reload_command':           str,
     'reload_timeout':           int,
     'verify_chain':             bool,
+    'verify_dates':             bool,
     'verify_loadable':          bool,
     'verify_matching_key':      bool,
     'verify_subject_cn':        bool,
-    'verify_dates':             bool,
     'verify_trusted_ca':        bool,
 }
 
@@ -158,10 +158,10 @@ CFG_DEFAULT_SETTINGS = {
     'key_perms':                '0600',
     'reload_timeout':           50,
     'verify_chain':             True,
+    'verify_dates':             True,
     'verify_loadable':          True,
     'verify_matching_key':      True,
     'verify_subject_cn':        True,
-    'verify_dates':             True,
     'verify_trusted_ca':        True,
 }
 
