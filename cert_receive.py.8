@@ -1,28 +1,142 @@
-.TH CERT_RECEIVE.PY "8" "July 2022" "cert_receive.py 0.2" "System Manager's Manual"
+.TH CERT_RECEIVE.PY "8" "December 2025" "cert_receive.py 0.3" "System Manager's Manual"
 .SH NAME
-cert_receive.py \- install an SSL/TLS certificate and key
+cert_receive.py \- install TLS/SSL certificates and keys
+.
+.\" ========================================================================
+.SH SYNOPSIS
+.\" ========================================================================
+.SY cert_receive.py
+.RB \%[ \-\-ca\-file \~\fIFILE\fP]
+.
+.RB \%[ \-\-ca\-path \~\fIPATH\fP\~|\~ \-\-no\-ca\-path ]
+.
+.RB \%[ \-\-config\-file \~\fIFILE\fP]
+.
+.RB \%[ \-\-receive\-timeout \~\fITIMEOUT\fP]
+.
+.RB \%[ \-\-set\-effective\-user \~\fIUSER\fP\~|\~ \
+\-\-no\-set\-effective\-user ]
+.YS
+.
+.SY cert_receive.py
+.RB \%[ \-\-config\-file \~\fIFILE\fP]
+.
+.B \%\-\-check\-config
+.YS
+.
+.\" ========================================================================
 .SH DESCRIPTION
-usage: cert_receive.py [\-\-ca\-file FILE]
-.IP
-[\-\-ca\-path PATH | \-\-no\-ca\-path] [\-\-check\-config]
-.IP
-[\-\-config\-file FILE] [\-\-receive\-timeout TIMEOUT]
-.IP
-[\-\-set\-effective\-user USER | \-\-no\-set\-effective\-user]
-.SS "optional arguments:"
+.\" ========================================================================
+The
+.I \%cert_receieve.py
+script will read a
+.I \%config_name
+and a sequence of PEM-encoded certificate and private key blocks from its
+standard input.  It then performs processing based on its configuration file
+\%(\(lq/etc/\:cert_receive.json\(rq by default).  It first validates that
+.I \%config_name
+is specified by the configuration file.  If it is, the certificates and key
+are then validated based on the applicable
+.IR \%verify_ .\|.\|.\&
+configuration settings.  If all validations pass, the certificates and key
+are installed according to the configuration.  In the event installation
+fails,
+.I \%cert_receieve.py
+will attempt to restore the target files so they retain their original
+content.
+.
+.\" ========================================================================
+.SH OPTIONS
+.\" ========================================================================
 .TP
-\fB\-\-ca\-file\fR FILE
-.HP
-\fB\-\-ca\-path\fR PATH
-.HP
-\fB\-\-no\-ca\-path\fR
-.HP
-\fB\-\-check\-config\fR
-.HP
-\fB\-\-config\-file\fR FILE
-.HP
-\fB\-\-receive\-timeout\fR TIMEOUT
-.HP
-\fB\-\-set\-effective\-user\fR USER
-.HP
-\fB\-\-no\-set\-effective\-user\fR
+.BI \%\-\-ca\-file\~ FILE
+Use
+.I FILE
+as the default CA file when verifying certificates were issued by a known CA
+.
+.TP
+.BI \%\-\-ca\-path\~ PATH
+.TQ
+.B \%\-\-no\-ca\-path
+Use
+.I PATH
+as the default CA path instead of \%\(lq/etc/\:ssl/\:certs\(rq when
+verifying certificates were issued by a known CA; To avoid using any default
+CA path, specify
+.B \%\-\-no\-ca\-path
+.
+.TP
+.B \%\-\-check\-config
+Check the configuration file instead of validating and installing
+certificates
+.
+.TP
+.BI \%\-\-config\-file\~ FILE
+Use
+.I FILE
+as the configuration file instead of the default,
+\%\(lq/etc/\:cert_receive.json\(rq
+.
+.TP
+.BI \%\-\-receive\-timeout\~ TIMEOUT
+Fail after
+.I TIMEOUT
+seconds instead of the default, 10 seconds, when waiting for data on
+standard input
+.
+.TP
+.BI \%\-\-set\-effective\-user\~ USER
+.TQ
+.B \%\-\-no\-set\-effective\-user
+Execute operations that do not require superuser privileges with the
+effective user set to
+.I USER
+instead of the default,
+.BR \%nobody ;
+To avoid setting the effective user ID, e.g., when the script is invoked by
+a non-superuser and a
+.MR seteuid 2
+call would fail, specify
+.B \%\-\-no\-set\-effective\-user
+.\" ========================================================================
+.SH EXAMPLE
+.\" ========================================================================
+.
+Typically
+.I \%cert_receive.py
+will run as a forced command executed when the
+.B root
+user connects to a service host via
+.MR sshd 8
+using a designated private key.  This is done with an
+.MR authorized_keys 5
+entry similar to the following with line breaks removed.
+.P
+.EX
+.\" Re-enable filling but disable adjustment, so line breaks can be inserted
+.\" where needed, but no attempt is made to fully-justify the output.
+.fi
+.na
+\%command=\(dq/usr/sbin/cert_receive.py\(dq,\:no\-agent\-forwarding,\:\
+no\-port\-forwarding,\:no\-pty,\:no\-X11\-forwarding
+.I \%key\-type \%public-key \%comment
+.ca
+.EE
+.
+.\" ========================================================================
+.SH FILES
+.\" ========================================================================
+.TP
+\%/etc/\:cert_receive.json
+default configuration file
+.
+.TP
+\%/etc/\:ssl/\:certs
+default CA path
+.
+.\" ========================================================================
+.SH SEE ALSO
+.\" ========================================================================
+.MR cert_receive.json 5 ,
+.MR authorized_keys 5 ,
+.MR certbot_send.sh 8
