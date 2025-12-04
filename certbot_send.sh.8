@@ -1,22 +1,108 @@
-.TH CERTBOT_SEND.SH "8" "July 2022" "certbot_send.sh 0.2" "System Manager's Manual"
+.TH CERTBOT_SEND.SH "8" "December 2025" "certbot_send.sh 0.3" "System Manager's Manual"
 .SH NAME
-certbot_send.sh \- send an SSL/TLS certificate and key to remote host(s)
+certbot_send.sh \- send TLS/SSL certificates and keys to remote hosts
+.
+.\" ========================================================================
+.SH SYNOPSIS
+.\" ========================================================================
+.SY \%env\~RENEWED_LINEAGE=\fR.\|.\|./\fP\:live/\:\fIconfig_name\fP\~\e
+.SY certbot_send.sh
+.RB \%[ \-\-config\-dir \~\fIDIR\fP]
+.
+.RB \%[ \-\-config\-file \~\fIFILE\fP]
+.
+.RB \%[ \-\-defaults\-file \~\fIFILE\fP\~|\~ \-\-no\-defaults\-file ]
+.
+.RB \%[ \-\-dry\-run ]
+.YS
+.
+.\" ========================================================================
 .SH DESCRIPTION
-usage: certbot_send.sh [\-\-config\-dir=DIR] [\-\-config\-file=FILE]
-.IP
-[\-\-defaults\-file=FILE | \-\-no\-defaults\-file] [\-\-dry\-run]
-.SS "optional arguments:"
+.\" ========================================================================
+The
+.I \%certbot_send.sh
+script sends TLS certificates and private keys to one or more recipient
+hosts using
+.MR ssh 1
+and presents the data in the format expected by
+.MR cert_receive.py 8 .
+The recipient hosts and parameters of the
+.I ssh
+command can be configured by files in the script's configuration directory,
+\%\(lq/etc/\:certbot_send\(rq by default.  The script is designed to work as
+a
+.MR certbot 1
+deploy hook.
+.
+.\" ========================================================================
+.SH OPTIONS
+.\" ========================================================================
 .TP
-\fB\-\-config\-dir\fR=DIR
-.HP
-\fB\-\-config\-file\fR=FILE
-.HP
-\fB\-\-defaults\-file\fR=FILE
-.HP
-\fB\-\-no\-defaults\-file\fR
-.HP
-\fB-n\fR, \fB\-\-dry\-run\fR
+.BI \%\-\-config\-dir\~ DIR
+Search for configuration files in
+.IR DIR ;
+defaults to \%\(lq/etc/\:certbot_send\(rq
+.
+.TP
+.BI \%\-\-config\-file\~ FILE
+Read variable settings indicating how to handle
+.I \%config_name
+from
+.IR FILE ;
+defaults to
+.RI \%\(lq config_dir / config_name .conf\(rq
+.
+.TP
+.BI \%\-\-defaults\-file\~ FILE
+.TQ
+.B \%\-\-no\-defaults\-file
+Read default variable settings applicable to all or most configurations from
+.IR FILE ;
+defaults to
+.RI \%\(lq config_dir /defaults\(rq
+unless
+.B \%\-\-no\-defaults\-file
+is specified, which prevents use of any defaults file
+.
+.TP
+.BR \%\-\-dry\-run\~ ( \-n )
+Show the commands that would be executed, instead of actually executing them
+.
+.\" ========================================================================
+.SH FILES
+.\" ========================================================================
+.TP
+\%/etc/\:certbot_send
+default configuration directory
+.TP
+.IR \%config_dir /\: config_name .conf
+default configuration file for
+.I \%config_name
+.
+.TP
+.IR \%config_dir /\:defaults
+default defaults file
+.
+.TP
+.IR \%config_dir /\:ssh_config
+default
+.MR ssh_config 5
+used by
+.I ssh
+invocations, if present
+.
+.\" ========================================================================
 .SH ENVIRONMENT
-.IP RENEWED_LINEAGE
-The path to Certbot's ``live'' directory for the certificate and key to be
-sent.
+.\" ========================================================================
+.TP
+RENEWED_LINEAGE
+The path to
+.IR \%certbot 's
+\(lqlive\(rq directory for the certificate(s) and key to be sent
+.
+.\" ========================================================================
+.SH SEE ALSO
+.\" ========================================================================
+.MR certbot_send 5 ,
+.MR certbot 1 ,
+.MR cert_receive.py 8
