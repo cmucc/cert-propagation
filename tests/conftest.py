@@ -38,21 +38,19 @@ def certificate_helper_per_session():
         def get_cert(cls, ca_num=None, intermediate_num=None, key_num=None):
             cert_args = CertArgs(ca_num, intermediate_num, key_num)
             if cert_args not in certs:
+                is_ca = key_num is None
                 bitvector = [1 if arg is not None else 0 for arg in cert_args]
                 if bitvector == [1, 0, 0]:
-                    is_ca = True
                     subject = 'CA Certificate {}'.format(ca_num)
                     pubkey = cls.get_key(ca_num)
                     issuer = subject
                     signkey = pubkey
                 elif bitvector == [1, 1, 0]:
-                    is_ca = False
                     subject = 'Intermediate Certificate {}'.format(intermediate_num)
                     pubkey = cls.get_key(intermediate_num)
                     issuer = 'CA Certificate {}'.format(ca_num)
                     signkey = cls.get_key(ca_num)
                 elif bitvector == [1, 0, 1]:
-                    is_ca = False
                     subject = 'CA-signed Certificate {}'.format(key_num)
                     pubkey = cls.get_key(key_num)
                     issuer = 'CA Certificate {}'.format(ca_num)
@@ -65,19 +63,16 @@ def certificate_helper_per_session():
                             'Inappropriate arguments. If an intermediate_num '
                             'is provided alone, it must be a sequence of length 2.'
                         ) from e
-                    is_ca = False
                     subject = 'Intermediate Certificate {}'.format(subject_num)
                     pubkey = cls.get_key(subject_num)
                     issuer = 'Intermediate Certificate {}'.format(issuer_num)
                     signkey = cls.get_key(issuer_num)
                 elif bitvector == [0, 1, 1]:
-                    is_ca = False
                     subject = 'Intermediate-signed Certificate {}'.format(key_num)
                     pubkey = cls.get_key(key_num)
                     issuer = 'Intermediate Certificate {}'.format(intermediate_num)
                     signkey = cls.get_key(intermediate_num)
                 elif bitvector == [0, 0, 1]:
-                    is_ca = False
                     subject = 'Self-signed Certificate {}'.format(key_num)
                     pubkey = cls.get_key(key_num)
                     issuer = subject
