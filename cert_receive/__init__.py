@@ -56,11 +56,11 @@ def resolve_user_name(user_name):
     try:
         pwent = pwd.getpwnam(user_name)
         return pwent.pw_uid
-    except KeyError as e:
+    except KeyError:
         if user_name == 'root':
             return 0
         if not user_name.isdecimal():
-            raise e
+            raise
         return int(user_name)
 
 def resolve_group_name(group_name):
@@ -69,11 +69,11 @@ def resolve_group_name(group_name):
     try:
         grent = grp.getgrnam(group_name)
         return grent.gr_gid
-    except KeyError as e:
+    except KeyError:
         if group_name in ('root', 'wheel'):
             return 0
         if not group_name.isdecimal():
-            raise e
+            raise
         return int(group_name)
 
 def drop_privileges():
@@ -921,9 +921,9 @@ def perform_verifications(config, certificates, key):
         expected_cn = config['expected_subject_cn']
         try:
             verify_certificate_subject_cn(get_cert_objects()[0], expected_cn)
-        except BadCertificateException as e:
+        except BadCertificateException:
             if cannot_reverse:
-                raise e
+                raise
             certificates.reverse()
             get_cert_objects().reverse()
             verify_certificate_subject_cn(get_cert_objects()[0], expected_cn)
@@ -944,9 +944,9 @@ def perform_verifications(config, certificates, key):
             verify_certificate_matches_key(config,
                                            get_cert_objects()[0],
                                            key_object)
-        except BadCertificateException as e:
+        except BadCertificateException:
             if cannot_reverse:
-                raise e
+                raise
             certificates.reverse()
             get_cert_objects().reverse()
             verify_certificate_matches_key(config,
