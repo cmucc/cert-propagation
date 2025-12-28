@@ -51,6 +51,15 @@ class UpdateFailedException(CertReceivePyException):
 g_args = None
 
 def resolve_user_name(user_name):
+    '''
+    Attempts to determine a UID for the specified user_name.  The caller can
+    force interpretation of a numeric UID by providing the UID prefixed by a
+    '#' character.  If no matching user name is found in the password
+    database, 'root' is treated as UID 0 while decimal strings are
+    interpreted as numeric UIDs.
+
+    Raises KeyError if user_name could not be resolved.
+    '''
     if user_name.startswith('#'):
         return int(user_name[1:])
     try:
@@ -64,6 +73,15 @@ def resolve_user_name(user_name):
         return int(user_name)
 
 def resolve_group_name(group_name):
+    '''
+    Attempts to determine a GID for the specified group_name.  The caller
+    can force interpretation of a numeric GID by providing the GID prefixed
+    by a '#' character.  If no matching user name is found in the password
+    database, 'root' and 'wheel' are treated as GID 0 while decimal strings
+    are interpreted as numeric GIDs.
+
+    Raises KeyError if group_name could not be resolved.
+    '''
     if group_name.startswith('#'):
         return int(group_name[1:])
     try:
