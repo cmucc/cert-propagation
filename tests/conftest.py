@@ -25,7 +25,7 @@ def certificate_helper_per_session():
             return {'openssl_ciphers': 'DEFAULT:@SECLEVEL=0'}
 
         @staticmethod
-        def get_key(key_num):
+        def get_key_object(key_num):
             if key_num not in keys:
                 keyfile = os.path.join(datadir, 'key{}.pem'.format(key_num))
                 with open(keyfile, 'rb') as fd:
@@ -35,26 +35,26 @@ def certificate_helper_per_session():
             return keys[key_num]
 
         @classmethod
-        def get_cert(cls, ca_num=None, intermediate_num=None, key_num=None):
+        def get_cert_object(cls, ca_num=None, intermediate_num=None, key_num=None):
             cert_args = CertArgs(ca_num, intermediate_num, key_num)
             if cert_args not in certs:
                 is_ca = key_num is None
                 bitvector = [1 if arg is not None else 0 for arg in cert_args]
                 if bitvector == [1, 0, 0]:
                     subject = 'CA Certificate {}'.format(ca_num)
-                    pubkey = cls.get_key(ca_num)
+                    pubkey = cls.get_key_object(ca_num)
                     issuer = subject
                     signkey = pubkey
                 elif bitvector == [1, 1, 0]:
                     subject = 'Intermediate Certificate {}'.format(intermediate_num)
-                    pubkey = cls.get_key(intermediate_num)
+                    pubkey = cls.get_key_object(intermediate_num)
                     issuer = 'CA Certificate {}'.format(ca_num)
-                    signkey = cls.get_key(ca_num)
+                    signkey = cls.get_key_object(ca_num)
                 elif bitvector == [1, 0, 1]:
                     subject = 'CA-signed Certificate {}'.format(key_num)
-                    pubkey = cls.get_key(key_num)
+                    pubkey = cls.get_key_object(key_num)
                     issuer = 'CA Certificate {}'.format(ca_num)
-                    signkey = cls.get_key(ca_num)
+                    signkey = cls.get_key_object(ca_num)
                 elif bitvector == [0, 1, 0]:
                     try:
                         issuer_num, subject_num = intermediate_num
@@ -64,17 +64,17 @@ def certificate_helper_per_session():
                             'is provided alone, it must be a sequence of length 2.'
                         ) from e
                     subject = 'Intermediate Certificate {}'.format(subject_num)
-                    pubkey = cls.get_key(subject_num)
+                    pubkey = cls.get_key_object(subject_num)
                     issuer = 'Intermediate Certificate {}'.format(issuer_num)
-                    signkey = cls.get_key(issuer_num)
+                    signkey = cls.get_key_object(issuer_num)
                 elif bitvector == [0, 1, 1]:
                     subject = 'Intermediate-signed Certificate {}'.format(key_num)
-                    pubkey = cls.get_key(key_num)
+                    pubkey = cls.get_key_object(key_num)
                     issuer = 'Intermediate Certificate {}'.format(intermediate_num)
-                    signkey = cls.get_key(intermediate_num)
+                    signkey = cls.get_key_object(intermediate_num)
                 elif bitvector == [0, 0, 1]:
                     subject = 'Self-signed Certificate {}'.format(key_num)
-                    pubkey = cls.get_key(key_num)
+                    pubkey = cls.get_key_object(key_num)
                     issuer = subject
                     signkey = pubkey
                 else:
@@ -106,6 +106,18 @@ def certificate_helper_per_session():
                                     algorithm=crypto_hashes.SHA256())
                 certs[cert_args] = cert
             return certs[cert_args]
+
+        @classmethod
+        def get_key(cls, key_num):
+            return cls.get_key_object(key_num).private_bytes(
+                        crypto_serdes.Encoding.PEM,
+                        crypto_serdes.PrivateFormat.PKCS8,
+                        crypto_serdes.NoEncryption()).decode()
+
+        @classmethod
+        def get_cert(cls, **kwargs):
+            return cls.get_cert_object(**kwargs).public_bytes(
+                        crypto_serdes.Encoding.PEM).decode()
 
     return CertificateHelper
 
