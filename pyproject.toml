@@ -1,0 +1,29 @@
+[project]
+name = "cert_receive"
+dependencies = [
+    "pexpect",
+    "pyOpenSSL",
+]
+authors = [
+    {name = "Keith A. Bare II"},
+]
+description = "script for TLS/SSL certificate installation"
+readme = "README.md"
+license = "GPL-3.0-or-later"
+dynamic = ["version"]
+
+[project.scripts]
+cert_receive = "cert_receive:main"
+
+[project.urls]
+Homepage = "https://github.com/cmucc/cert-propagation"
+Repository = "https://github.com/cmucc/cert-propagation.git"
+
+[build-system]
+requires = [
+    "setuptools>=61",
+    "setuptools-scm>=8",
+]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools_scm]
