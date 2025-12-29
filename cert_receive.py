@@ -1,4 +1,12 @@
 #!/usr/bin/python3
+'''
+Python package implementing a cert_receive script that performs TLS/SSL
+certificate installation.
+
+WARNING: only the main method should be considered a public interface.  All
+other methods and variables should be considered internal to the package and
+may not maintain a stable API.
+'''
 
 import argparse
 import grp
@@ -931,86 +939,89 @@ def reload_service(config):
         raise UpdateFailedException('\n'.join(msgs))
 
 def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--ca-file',
-                        metavar='FILE')
-    parser.add_argument('--ca-path',
-                        metavar='PATH',
-                        default=DEFAULT_CA_PATH)
-    parser.add_argument('--no-ca-path',
-                        dest='ca_path',
-                        action='store_const',
-                        const=None)
-    parser.add_argument('--check-config',
-                        action='store_true')
-    parser.add_argument('--config-file',
-                        metavar='FILE',
-                        default=DEFAULT_CONFIG_FILE)
-    parser.add_argument('--receive-timeout',
-                        metavar='TIMEOUT',
-                        type=int,
-                        default=10)
-    parser.add_argument('--set-effective-user',
-                        metavar='USER',
-                        default='nobody')
-    parser.add_argument('--no-set-effective-user',
-                        dest='set_effective_user',
-                        action='store_const',
-                        const=None)
-    global g_args
-    g_args = parser.parse_args()
-
     try:
-        config_in = open(g_args.config_file, 'rt')
-    except IOError as e:
-        raise BadConfigException('Error opening configuration file "{}":\n{}'
-                                 .format(g_args.config_file, str(e)))
+        parser = argparse.ArgumentParser()
+        parser.add_argument('--ca-file',
+                            metavar='FILE')
+        parser.add_argument('--ca-path',
+                            metavar='PATH',
+                            default=DEFAULT_CA_PATH)
+        parser.add_argument('--no-ca-path',
+                            dest='ca_path',
+                            action='store_const',
+                            const=None)
+        parser.add_argument('--check-config',
+                            action='store_true')
+        parser.add_argument('--config-file',
+                            metavar='FILE',
+                            default=DEFAULT_CONFIG_FILE)
+        parser.add_argument('--receive-timeout',
+                            metavar='TIMEOUT',
+                            type=int,
+                            default=10)
+        parser.add_argument('--set-effective-user',
+                            metavar='USER',
+                            default='nobody')
+        parser.add_argument('--no-set-effective-user',
+                            dest='set_effective_user',
+                            action='store_const',
+                            const=None)
+        global g_args
+        g_args = parser.parse_args()
 
-    try:
-        drop_privileges()
+        try:
+            config_in = open(g_args.config_file, 'rt')
+        except IOError as e:
+            raise BadConfigException('Error opening configuration file "{}":\n{}'
+                                     .format(g_args.config_file, str(e)))
 
-        config = load_configuration(config_in)
+        try:
+            drop_privileges()
 
-    finally:
-        config_in.close()
+            config = load_configuration(config_in)
 
-    if g_args.check_config:
-        messages = []
-        had_errors = False
-        for name, section in config.items():
-            header, errors, warnings = check_configuration_section(name,
-                                                                   section)
-            if errors:
-                had_errors = True
-            if header is not None:
-                messages.extend([header] + errors + warnings)
-        if had_errors:
-            raise BadConfigException('\n'.join(messages))
-        if messages:
-            print('\n'.join(messages), file=sys.stderr)
-        return
+        finally:
+            config_in.close()
 
-    config, certificates, key = interact_with_sender(config)
+        if g_args.check_config:
+            messages = []
+            had_errors = False
+            for name, section in config.items():
+                header, errors, warnings = check_configuration_section(name,
+                                                                       section)
+                if errors:
+                    had_errors = True
+                if header is not None:
+                    messages.extend([header] + errors + warnings)
+            if had_errors:
+                raise BadConfigException('\n'.join(messages))
+            if messages:
+                print('\n'.join(messages), file=sys.stderr)
+            return
 
-    key_file_name = config.get('key_path')
-    if config['bundle_key']:
-        key_file_name = config['certificate_path']
-    if key is not None and key_file_name is None:
-        raise BadConfigException('Error, received a private key from sender, '
-                                 'but no destination for it is configured',)
+        config, certificates, key = interact_with_sender(config)
 
-    perform_verifications(config, certificates, key, key_file_name)
+        key_file_name = config.get('key_path')
+        if config['bundle_key']:
+            key_file_name = config['certificate_path']
+        if key is not None and key_file_name is None:
+            raise BadConfigException('Error, received a private key from sender, '
+                                     'but no destination for it is configured',)
 
-    reacquire_privileges()
+        perform_verifications(config, certificates, key, key_file_name)
 
-    install_files(config, certificates, key)
+        reacquire_privileges()
 
-    if 'reload_command' in config:
-        reload_service(config)
+        install_files(config, certificates, key)
 
-if __name__ == '__main__':
-    try:
-        main()
+        if 'reload_command' in config:
+            reload_service(config)
+
+        return 0
+
     except CertReceivePyException as e:
         print(str(e), file=sys.stderr)
-        sys.exit(e.EXITCODE)
+        return e.EXITCODE
+
+if __name__ == '__main__':
+    sys.exit(main())
