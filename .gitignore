@@ -5,6 +5,7 @@ __pycache__/
 /cert_receive.egg-info/
 /config.mk
 /dist/
+/debian/*.debhelper
 /debian/*.log
 /debian/.debhelper/
 /debian/cclub-cert-receive.substvars
@@ -13,5 +14,6 @@ __pycache__/
 /debian/cclub-certbot-send/
 /debian/debhelper-build-stamp
 /debian/files
+/debian/tmp/
 /pip_install_*
 /wrapper/cert_receive.py

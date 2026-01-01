@@ -1,1 +1,1 @@
-certbot_send.sh usr/sbin
+usr/sbin/certbot_send.sh

@@ -1,2 +1,2 @@
-certbot_send.5
-certbot_send.sh.8
+usr/share/man/man5/certbot_send.5
+usr/share/man/man8/certbot_send.sh.8

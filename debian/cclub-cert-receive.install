@@ -1,2 +1,2 @@
-cert_receive/* usr/share/cclub-cert-receive/cert_receive
-wrapper/cert_receive.py usr/sbin
+usr/sbin/cert_receive.py
+usr/share/cclub-cert-receive
