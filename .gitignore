@@ -1,7 +1,9 @@
 __pycache__/
+/*-stamp
 /.tox/
 /build/
 /cert_receive.egg-info/
+/config.mk
 /dist/
 /debian/*.log
 /debian/.debhelper/
@@ -11,4 +13,5 @@ __pycache__/
 /debian/cclub-certbot-send/
 /debian/debhelper-build-stamp
 /debian/files
+/pip_install_*
 /wrapper/cert_receive.py
