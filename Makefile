@@ -1,7 +1,9 @@
+PYTHON = python3
+
 all :
 
 check :
-	fakeroot python3 -m pytest
+	fakeroot $(PYTHON) -m pytest
 
 clean :
 	rm -rf build cert_receive.egg-info dist
