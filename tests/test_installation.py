@@ -255,7 +255,7 @@ class TestInstallation:
 
     @staticmethod
     def make_backup_paths(*args):
-        return tuple(None if x is None else Path(x).with_name(x.name + '.bak')
+        return tuple(None if x is None else x.with_name(x.name + '.bak')
                      for x in args)
 
     @staticmethod
