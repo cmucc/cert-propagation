@@ -21,7 +21,7 @@ Repository = "https://github.com/cmucc/cert-propagation.git"
 
 [build-system]
 requires = [
-    "setuptools>=61",
+    "setuptools>=68.1",
     "setuptools-scm>=8",
 ]
 build-backend = "setuptools.build_meta"
