@@ -2,7 +2,6 @@ from datetime import datetime, timedelta, timezone
 import subprocess
 from unittest.mock import Mock
 
-from cryptography.hazmat.primitives import serialization as crypto_serdes
 import OpenSSL.crypto as ssl_crypto
 import pytest
 
@@ -159,11 +158,7 @@ class TestVerifications:
     foreach_verifier = pytest.mark.parametrize(
         'verifier',
         [
-            pytest.param(lambda config, cert_objects:
-                             cr._verify_trust_python(
-                                 config,
-                                 [ssl_crypto.X509.from_cryptography(cert_object)
-                                  for cert_object in cert_objects]),
+            pytest.param(cr._verify_trust_python,
                          id='python',
                          marks=pytest.mark.skipif(
                              not hasattr(ssl_crypto.X509Store, 'load_locations'),
@@ -172,9 +167,10 @@ class TestVerifications:
             pytest.param(lambda config, cert_objects:
                              cr._verify_trust_openssl_subprocess(
                                  config,
-                                 [cert_object.public_bytes(
-                                      crypto_serdes.Encoding.PEM).decode()
-                                  for cert_object in cert_objects]),
+                                 [ssl_crypto.dump_certificate(
+                                      ssl_crypto.FILETYPE_PEM,
+                                      cert_object).decode()
+                                 for cert_object in cert_objects]),
                         id='subprocess'),
         ]
     )
