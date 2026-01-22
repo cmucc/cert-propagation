@@ -6,6 +6,7 @@ from cryptography import x509
 from cryptography.hazmat.primitives \
         import serialization as crypto_serdes, hashes as crypto_hashes
 from cryptography.x509.oid import NameOID
+import OpenSSL.SSL as ssl
 import pytest
 
 @pytest.fixture(scope='session')
@@ -22,7 +23,9 @@ def certificate_helper_per_session():
 
         @staticmethod
         def get_config():
-            return {'openssl_ciphers': 'DEFAULT:@SECLEVEL=0'}
+            if ssl.OPENSSL_VERSION_NUMBER >= 0x10100000:
+                return {'openssl_ciphers': 'DEFAULT:@SECLEVEL=0'}
+            return {}
 
         @staticmethod
         def get_key_object(key_num):
