@@ -30,3 +30,87 @@ build-backend = "setuptools.build_meta"
 py-modules = ["cert_receive"]
 
 [tool.setuptools_scm]
+
+[tool.tox]
+requires = ["tox>=4.21.1"]
+env_list = ["py-latest", "py313-debian13", "py311-debian12", "py39-debian11"]
+
+[tool.tox.env_run_base]
+package = "wheel"
+wheel_build_env = ".pkg"
+pass_env = [
+    # to support running under fakeroot
+    "FAKEROOTKEY",
+    "LD_LIBRARY_PATH",
+    "LD_PRELOAD",
+]
+set_env = [
+    # prevent pytest instances that are run in parallel from interfering with
+    # each other
+    {TMPDIR = "{env_tmp_dir}"},
+]
+commands = [
+    ["pytest", "tests", {replace="posargs", extend=true}],
+]
+
+[tool.tox.env.py-latest]
+description = """Python used to run tox and the latest version of the pexpect/\
+                 pyOpenSSL/cryptography packages"""
+deps = [
+    "pytest",
+    "pexpect",
+    "pyOpenSSL",
+    "cryptography",
+]
+
+[tool.tox.env.system]
+description = """Default system python and only packages from its system \
+                 site-packages directories"""
+base_python = ["/usr/bin/python3"]
+system_site_packages = true
+commands = [
+    ["python", "-P", "-m", "pytest", "tests", {replace="posargs", extend=true}],
+]
+allowlist_externals = ['sh']
+install_command = [
+    "sh", "-c", """\
+    case "$*" in
+    *" --no-deps "*)
+        exec "$@";
+        ;;
+    *)
+        exit 0;
+        ;;
+    esac""", "--",
+    "python", "-I", "-m", "pip", "install", '\{opts\}', '\{packages\}',
+]
+
+[tool.tox.env.py313-debian13]
+description = """Python and pexpect/pyOpenSSL/cryptography package versions \
+                 in Debian 13"""
+deps = [
+    "pytest",
+    "pexpect==4.9",
+    "pyOpenSSL==25.0.0",
+    "cryptography==43.0.0",
+]
+
+[tool.tox.env.py311-debian12]
+description = """Python and pexpect/pyOpenSSL/cryptography package versions \
+                 in Debian 12"""
+deps = [
+    "pytest",
+    "pexpect==4.8.0",
+    "pyOpenSSL==23.0.0",
+    "cryptography==38.0.4",
+]
+
+[tool.tox.env.py39-debian11]
+description = """Python and pexpect/pyOpenSSL/cryptography package versions \
+                 in Debian 11"""
+deps = [
+    "pytest",
+    "pexpect==4.8.0",
+    "pyOpenSSL==20.0.1",
+    "cryptography==3.3.2",
+]
