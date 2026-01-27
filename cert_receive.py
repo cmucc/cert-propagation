@@ -535,12 +535,14 @@ def _verify_trust_python(config, cert_objects):
                                       'from sender was issued by a trusted '
                                       'CA:\n' + str(e))
 
+_openssl_executable = os.getenv('OPENSSL', default='openssl')
+
 def _verify_trust_openssl_subprocess(config, certificates):
     '''
     Implementation of verify_certificate_issued_by_trusted_ca utilizing an
     "openssl verify" subprocess.
     '''
-    cmd = ['openssl', 'verify']
+    cmd = [_openssl_executable, 'verify']
     if 'ca_file' in config:
         cmd.append('-CAfile')
         cmd.append(config['ca_file'])
