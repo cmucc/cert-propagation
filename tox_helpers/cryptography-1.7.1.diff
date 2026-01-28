@@ -1,3 +1,14 @@
+This patch is derived from the PyCA Cryptography 1.7.1 source, which has
+the following copyright notice:
+
+Copyright 2013-2016 The cryptography developers
+
+The cryptography-1.7.1 source distribution states:
+
+[These files are] dual licensed under the terms of the Apache License,
+Version 2.0, and the BSD License. See the LICENSE file in the root of [the
+cryptography-1.7.1 source distribution] for complete details.
+
 Index: cryptography-1.7.1/src/_cffi_src/openssl/asn1.py
 ===================================================================
 --- cryptography-1.7.1.orig/src/_cffi_src/openssl/asn1.py

@@ -5,7 +5,7 @@ dependencies = [
     "pyOpenSSL",
 ]
 authors = [
-    {name = "Keith A. Bare II"},
+    {name = "Keith Allen Bare II"},
 ]
 description = "script for TLS/SSL certificate installation"
 readme = "README.md"
