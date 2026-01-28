@@ -50,6 +50,11 @@ wrapper/cert_receive.py : wrapper/cert_receive.py.in
 	{ rm -f $@; exit 1; }
 
 clean :
+	if [ ! -f ./cert_receive/__init__.py ]; then \
+	    echo 'it does not appear $$PWD is a cert-propagation source tree...' >&2; \
+	    echo 'cowardly refusing to delete anything' >&2; \
+	    exit 1; \
+	fi
 	rm -rf build build-python-stamp cert_receive.egg-info dist pip_install_*
 	find . -path ./.tox -prune -o \
 	       -name __pycache__ -type d -prune -exec rm -rf {} \;
