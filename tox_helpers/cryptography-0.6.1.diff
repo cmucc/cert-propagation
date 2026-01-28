@@ -1,0 +1,36 @@
+Index: cryptography-0.6.1/cryptography/hazmat/bindings/openssl/bio.py
+===================================================================
+--- cryptography-0.6.1.orig/cryptography/hazmat/bindings/openssl/bio.py
++++ cryptography-0.6.1/cryptography/hazmat/bindings/openssl/bio.py
+@@ -108,7 +108,6 @@ BIO *BIO_pop(BIO *);
+ BIO *BIO_next(BIO *);
+ BIO *BIO_find_type(BIO *, int);
+ BIO_METHOD *BIO_s_mem(void);
+-BIO *BIO_new_mem_buf(void *, int);
+ BIO_METHOD *BIO_s_file(void);
+ BIO *BIO_new_file(const char *, const char *);
+ BIO *BIO_new_fp(FILE *, int);
+@@ -173,6 +172,9 @@ long BIO_set_buffer_read_data(BIO *, voi
+ /* The following was a macro in 0.9.8e. Once we drop support for RHEL/CentOS 5
+    we should move this back to FUNCTIONS. */
+ int BIO_method_type(const BIO *);
++
++/* void * became const at some point */
++BIO *BIO_new_mem_buf(void *, int);
+ """
+ 
+ CUSTOMIZATIONS = """
+Index: cryptography-0.6.1/cryptography/hazmat/bindings/openssl/ssl.py
+===================================================================
+--- cryptography-0.6.1.orig/cryptography/hazmat/bindings/openssl/ssl.py
++++ cryptography-0.6.1/cryptography/hazmat/bindings/openssl/ssl.py
+@@ -386,9 +386,6 @@ static const long Cryptography_HAS_SECUR
+ #endif
+ #ifdef OPENSSL_NO_SSL2
+ static const long Cryptography_HAS_SSL2 = 0;
+-SSL_METHOD* (*SSLv2_method)(void) = NULL;
+-SSL_METHOD* (*SSLv2_client_method)(void) = NULL;
+-SSL_METHOD* (*SSLv2_server_method)(void) = NULL;
+ #else
+ static const long Cryptography_HAS_SSL2 = 1;
+ #endif
