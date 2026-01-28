@@ -40,6 +40,15 @@ import sys
 import tempfile
 import time
 
+try:
+    from importlib.metadata import version as pkg_version
+except ImportError:
+    try:
+        from importlib_metadata import version as pkg_version
+    except ImportError:
+        def pkg_version(_):
+            return '0.3'
+
 import OpenSSL.SSL as ssl
 import OpenSSL.crypto as ssl_crypto
 
@@ -1231,36 +1240,68 @@ def reload_service(config):
             msgs.append('<<<<<<<<<<<<<<<<')
         raise UpdateFailedException('\n'.join(msgs))
 
+def version():
+    my_version = pkg_version('cert_receive')
+    print('\n'.join([
+        '{} version {}'.format(os.path.basename(sys.argv[0]), my_version),
+        'Copyright (C) 2022-2026 Keith Allen Bare II',
+        '',
+        'This program comes with ABSOLUTELY NO WARRANTY.  It is free software',
+        'and you are welcome to redistribute it.  For details, see the GNU',
+        'General Public License, either version 3, or (at your option) any',
+        'later version.  <https://www.gnu.org/licenses/gpl.html>',
+    ]))
+
 def main():
     try:
         parser = argparse.ArgumentParser()
+        parser.add_argument('-V', '--version',
+                            action='store_true',
+                            help='show program version and copying '
+                                 'information then exit')
         parser.add_argument('--ca-file',
-                            metavar='FILE')
+                            metavar='FILE',
+                            help='set FILE as the default CA file when '
+                                 'verifying certificates')
         parser.add_argument('--ca-path',
                             metavar='PATH',
-                            default=DEFAULT_CA_PATH)
+                            default=DEFAULT_CA_PATH,
+                            help='set PATH as the default CA path when '
+                                 'verifying certificates')
         parser.add_argument('--no-ca-path',
                             dest='ca_path',
                             action='store_const',
-                            const=None)
+                            const=None,
+                            help='refrain from setting a default CA path')
         parser.add_argument('--check-config',
-                            action='store_true')
+                            action='store_true',
+                            help='check configuration and exit')
         parser.add_argument('--config-file',
                             metavar='FILE',
-                            default=DEFAULT_CONFIG_FILE)
+                            default=DEFAULT_CONFIG_FILE,
+                            help='read configuration from FILE')
         parser.add_argument('--receive-timeout',
                             metavar='TIMEOUT',
                             type=int,
-                            default=10)
+                            default=10,
+                            help='fail if no data is received within '
+                                 'TIMEOUT seconds')
         parser.add_argument('--set-effective-user',
                             metavar='USER',
-                            default='nobody')
+                            default='nobody',
+                            help='set effective user to USER when superuser '
+                                 'privileges are not required')
         parser.add_argument('--no-set-effective-user',
                             dest='set_effective_user',
                             action='store_const',
-                            const=None)
+                            const=None,
+                            help='do not change the effective user')
         global g_args
         g_args = parser.parse_args()
+
+        if g_args.version:
+            version()
+            return 0
 
         try:
             config_in = open(g_args.config_file, 'rt')
@@ -1290,7 +1331,7 @@ def main():
                 raise BadConfigException('\n'.join(messages))
             if messages:
                 print('\n'.join(messages), file=sys.stderr)
-            return
+            return 0
 
         config, certificates, key = interact_with_sender(config)
 
