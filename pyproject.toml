@@ -71,9 +71,9 @@ system_site_packages = true
 commands = [
     ["python", "-P", "-m", "pytest", "tests", {replace="posargs", extend=true}],
 ]
-allowlist_externals = ['sh']
+allowlist_externals = ["/bin/sh"]
 install_command = [
-    "sh", "-c", """\
+    "/bin/sh", "-c", """\
     case "$*" in
     *" --no-deps "*)
         exec "$@";
