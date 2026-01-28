@@ -33,7 +33,8 @@ py-modules = ["cert_receive"]
 
 [tool.tox]
 requires = ["tox>=4.21.1"]
-env_list = ["py-latest", "py313-debian13", "py311-debian12", "py39-debian11"]
+env_list = ["py-latest", "py313-debian13", "py311-debian12", "py39-debian11",
+            "virtualenv20_4_7", "py37-debian10", "py35-debian9", "py34-debian8"]
 
 [tool.tox.env_run_base]
 package = "wheel"
@@ -51,6 +52,28 @@ set_env = [
 ]
 commands = [
     ["pytest", "tests", {replace="posargs", extend=true}],
+]
+
+# NB: the OpenSSL version used is based on the OpenSSL major version the
+# corresponding Python was compiled against, *NOT* the OpenSSL version in the
+# simulated Debian release
+
+[tool.tox.base_openssl1_1]
+set_env = [
+    {replace="ref", of=["tool", "tox", "env_run_base", "set_env"], extend=true},
+    # adjust as needed for where you have OpenSSL 1.1.x installed on your system
+    {CPPFLAGS="-I/opt/openssl-1.1.1w/include"},
+    {LDFLAGS="-L/opt/openssl-1.1.1w/lib"},
+    {OPENSSL="/opt/openssl-1.1.1w/bin/openssl"},
+]
+
+[tool.tox.base_openssl1_0]
+set_env = [
+    {replace="ref", of=["tool", "tox", "env_run_base", "set_env"], extend=true},
+    # adjust as needed for where you have OpenSSL 1.0.x installed on your system
+    {CPPFLAGS="-I/opt/openssl-1.0.2u/include"},
+    {LDFLAGS="-L/opt/openssl-1.0.2u/lib"},
+    {OPENSSL="/opt/openssl-1.0.2u/bin/openssl"},
 ]
 
 [tool.tox.env.py-latest]
@@ -114,3 +137,79 @@ deps = [
     "pyOpenSSL==20.0.1",
     "cryptography==3.3.2",
 ]
+
+# this is used as an external creator for the Python 3.4 through Python 3.7
+# virtual environments
+[tool.tox.env.virtualenv20_4_7]
+base_python = ["/usr/local/bin/python3.11"]
+package = "skip"
+deps = ["virtualenv==20.4.7"]
+commands = []
+
+[tool.tox.env.py37-debian10]
+description = """Python and pexpect/pyOpenSSL/cryptography package versions \
+                 in Debian 10"""
+runner = "external-virtualenv"
+create_with_ext_env = "virtualenv20_4_7"
+deps = [
+    "pytest",
+    "importlib-metadata",
+    "pexpect==4.6.0",
+    "pyOpenSSL==19.0.0",
+    "cryptography==2.6.1",
+]
+set_env = [
+    {replace="ref", of=["tool", "tox", "base_openssl1_1", "set_env"], extend=true},
+]
+install_command = ["python", "-I", "-m", "pip", "install",
+                   "--no-binary=pyOpenSSL", "--no-binary=cryptography",
+                   '\{opts\}', '\{packages\}']
+
+[tool.tox.env.py35-debian9]
+description = """Python and pexpect/pyOpenSSL/cryptography package versions \
+                 in Debian 9"""
+runner = "external-virtualenv"
+create_with_ext_env = "virtualenv20_4_7"
+deps = [
+    "pytest",
+    "importlib-metadata",
+    "pexpect==4.2.1",
+    "pyOpenSSL==16.2.0",
+    "cryptography==1.7.1",
+]
+set_env = [
+    {replace="ref", of=["tool", "tox", "base_openssl1_1", "set_env"], extend=true},
+    {CFLAGS="-Wno-error=incompatible-pointer-types"},
+]
+allowlist_externals = ["/bin/sh"]
+install_command = ["/bin/sh", "tox_helpers/patch_packages.sh",
+                   "{env_dir}", "cryptography-1.7.1.diff", "--", '\{opts\}',
+                   "--no-binary=cryptography", "--no-binary=pyOpenSSL", "--",
+                   '\{packages\}']
+# the latest pytest that works with Python 3.5 tries (and fails) to read
+# configuration from pyproject.toml; to avoid the crash, we tell it to use
+# /dev/null as its configuration file
+commands = [
+    ["pytest", "-c", "/dev/null", "tests", {replace="posargs", extend=true}],
+]
+
+[tool.tox.env.py34-debian8]
+description = """Python and pexpect/pyOpenSSL/cryptography package versions \
+                 in Debian 8"""
+runner = "external-virtualenv"
+create_with_ext_env = "virtualenv20_4_7"
+deps = [
+    "pytest",
+    "importlib-metadata",
+    "pexpect==3.2",
+    "pyOpenSSL==0.14",
+    "cryptography==0.6.1",
+]
+set_env = [
+    {replace="ref", of=["tool", "tox", "base_openssl1_0", "set_env"], extend=true},
+]
+allowlist_externals = ["/bin/sh"]
+install_command = ["/bin/sh", "tox_helpers/patch_packages.sh",
+                   "{env_dir}", "cryptography-0.6.1.diff", "--", '\{opts\}',
+                   "--no-binary=cryptography", "--no-binary=pyOpenSSL", "--",
+                   '\{packages\}']
