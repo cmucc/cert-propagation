@@ -1,6 +1,6 @@
-.TH CERTBOT_SEND.SH "8" "December 2025" "certbot_send.sh 0.3" "System Manager's Manual"
+.TH CERTBOT_SEND.SH "8" "January 2026" "certbot_send.sh 0.3" "System Manager's Manual"
 .
-.\" Copyright (C) 2022, 2025 Keith Allen Bare II
+.\" Copyright (C) 2022, 2025, 2026 Keith Allen Bare II
 .
 .\" This file is part of cert-propagation.
 .\"
@@ -31,7 +31,7 @@ certbot_send.sh \- send TLS/SSL certificates and keys to remote hosts
 .SH SYNOPSIS
 .\" ========================================================================
 .SY \%env\~RENEWED_LINEAGE=\fR.\|.\|./\fP\:live/\:\fIconfig_name\fP\~\e
-.SY certbot_send.sh
+.SY \%certbot_send.sh
 .RB \%[ \-\-config\-dir \~\fIDIR\fP]
 .
 .RB \%[ \-\-config\-file \~\fIFILE\fP]
@@ -39,6 +39,11 @@ certbot_send.sh \- send TLS/SSL certificates and keys to remote hosts
 .RB \%[ \-\-defaults\-file \~\fIFILE\fP\~|\~ \-\-no\-defaults\-file ]
 .
 .RB \%[ \-\-dry\-run ]
+.YS
+.
+.SY \%certbot_send.sh\~\-\-help
+.YS
+.SY \%certbot_send.sh\~\-\-version
 .YS
 .
 .\" ========================================================================
@@ -92,6 +97,14 @@ is specified, which prevents use of any defaults file
 .TP
 .BR \%\-\-dry\-run\~ ( \-n )
 Show the commands that would be executed, instead of actually executing them
+.
+.TP
+.BR \%\-\-help\~ ( \-h )
+Display a short usage synopsis and exit
+.
+.TP
+.BR \%\-\-version\~ ( \-V )
+Display the script version and copying information then exit
 .
 .\" ========================================================================
 .SH FILES
