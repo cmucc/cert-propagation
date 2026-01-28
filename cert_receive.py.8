@@ -1,4 +1,4 @@
-.TH CERT_RECEIVE.PY "8" "December 2025" "cert_receive.py 0.3" "System Manager's Manual"
+.TH CERT_RECEIVE.PY "8" "January 2026" "cert_receive.py 0.3" "System Manager's Manual"
 .
 .\" Copyright (C) 2022, 2025, 2026 Keith Allen Bare II
 .
@@ -47,6 +47,11 @@ cert_receive.py \- install TLS/SSL certificates and keys
 .RB \%[ \-\-config\-file \~\fIFILE\fP]
 .
 .B \%\-\-check\-config
+.YS
+.
+.SY cert_receive.py\~\-\-help
+.YS
+.SY cert_receive.py\~\-\-version
 .YS
 .
 .\" ========================================================================
@@ -103,6 +108,10 @@ as the configuration file instead of the default,
 \%\(lq/etc/\:cert_receive.json\(rq
 .
 .TP
+.BR \%\-\-help \~( \-h )
+Show program usage text and exit
+.
+.TP
 .BI \%\-\-receive\-timeout\~ TIMEOUT
 Fail after
 .I TIMEOUT
@@ -123,6 +132,11 @@ a non-superuser and a
 .MR seteuid 2
 call would fail, specify
 .B \%\-\-no\-set\-effective\-user
+.
+.TP
+.BR \%\-\-version \~( \-V )
+Show program version and copying information then exit
+.
 .\" ========================================================================
 .SH EXAMPLE
 .\" ========================================================================
