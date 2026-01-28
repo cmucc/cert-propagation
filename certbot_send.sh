@@ -1,6 +1,6 @@
 #!/bin/sh
 
-# Copyright (C) 2022 Keith Allen Bare II
+# Copyright (C) 2022, 2026 Keith Allen Bare II
 #
 # This file is part of cert-propagation.
 #
@@ -22,6 +22,16 @@ set -e
 usage() {
     echo "usage: ${0##*/} [--config-dir=DIR] [--config-file=FILE]" >&2
     echo "    [--defaults-file=FILE | --no-defaults-file] [--dry-run]" >&2
+}
+
+version() {
+    echo "${0##*/} version 0.3"
+    echo "Copyright (C) 2022, 2026 Keith Allen Bare II"
+    echo
+    echo "This script comes with ABSOLUTELY NO WARRANTY.  It is free software"
+    echo "and you are welcome to redistribute it.  For details, see the GNU"
+    echo "General Public License, either version 3, or (at your option) any"
+    echo "later version.  <https://www.gnu.org/licenses/gpl.html>"
 }
 
 CONFIG_NAME=
@@ -71,6 +81,10 @@ while [ $# -gt 0 ]; do
         ;;
     -h|--help)
         usage
+        exit 0
+        ;;
+    -V|--version)
+        version
         exit 0
         ;;
     --)
