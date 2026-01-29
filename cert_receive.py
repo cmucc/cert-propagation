@@ -315,7 +315,7 @@ def interact_with_sender(full_config):
     Raises BadSenderException if the sender does not follow protocol or
     provide the expected data.
     '''
-    sender = pexpect.fdpexpect.fdspawn(sys.stdin,
+    sender = pexpect.fdpexpect.fdspawn(os.dup(sys.stdin.fileno()),
                                        timeout=g_args.receive_timeout,
                                        maxread=20000,
                                        encoding='utf-8')
