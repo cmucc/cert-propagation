@@ -11,19 +11,17 @@ import pytest
 
 import cert_receive as cr
 
+@pytest.mark.usefixtures('override_g_args')
 class TestInstallation:
-    @staticmethod
-    def add_defaults_and_process_config(config):
+    def add_defaults_and_process_config(self, config):
         for key in cr.CFG_DEFAULT_SETTINGS:
             if key in config:
                 continue
             if key.startswith('verify_'):
                 config[key] = False
-        with patch('cert_receive.g_args') as mock_args:
-            mock_args.ca_file = None
-            mock_args.ca_path = None
-            mock_args.config_file = 'mock_config.json'
-            header, errors, warnings = cr.check_configuration_section('test', config)
+        self.override_g_args.ca_path = None
+        self.override_g_args.config_file = 'mock_config.json'
+        header, errors, warnings = cr.check_configuration_section('test', config)
         if errors or warnings:
             assert False, '\n'.join(['Expected configuration check to pass without '
                                      'errors or warnings but it reported:\n',
@@ -236,8 +234,7 @@ class TestInstallation:
 
     SENTINEL = object()
 
-    @classmethod
-    def prepare_install_files(cls, tmp_path, config):
+    def prepare_install_files(self, tmp_path, config):
         paths = [
             ('certificate', tmp_path / 'cert'),
             ('intermediate', tmp_path / 'chain'),
@@ -245,12 +242,12 @@ class TestInstallation:
         ]
         for what, path in paths:
             key = what + '_path'
-            exist = config.get(key, cls.SENTINEL)
-            if exist is cls.SENTINEL:
+            exist = config.get(key, self.SENTINEL)
+            if exist is self.SENTINEL:
                 config[key] = str(path)
             elif exist is None:
                 del config[key]
-        cls.add_defaults_and_process_config(config)
+        self.add_defaults_and_process_config(config)
         return (x[1] for x in paths)
 
     @staticmethod

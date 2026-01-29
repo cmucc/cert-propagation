@@ -1,6 +1,7 @@
 from collections import namedtuple
 from datetime import datetime, timedelta, timezone
 import os.path
+from unittest.mock import patch
 
 try:
     from importlib.metadata import version as pkg_version
@@ -24,6 +25,8 @@ if 'pkg_version' not in globals():
         from importlib_metadata import version as pkg_version
     except ImportError:
         pkg_version = lambda x: '0.0.0'
+
+import cert_receive as cr
 
 @pytest.fixture(scope='session')
 def certificate_helper_per_session():
@@ -205,3 +208,21 @@ def clear_umask():
     old_umask = os.umask(0o000)
     yield
     os.umask(old_umask)
+
+@pytest.fixture(scope='function')
+def mock_g_args():
+    with patch('cert_receive.g_args') as mock:
+        mock.version = False
+        mock.ca_file = None
+        mock.ca_path = cr.DEFAULT_CA_PATH
+        mock.check_config = False
+        mock.config_file = cr.DEFAULT_CONFIG_FILE
+        mock.receive_timeout = 10
+        mock.set_effective_user = 'nobody'
+        yield mock
+
+@pytest.fixture(scope='function')
+def override_g_args(request, mock_g_args):
+    request.instance.override_g_args = mock_g_args
+    yield mock_g_args
+    del request.instance.override_g_args
