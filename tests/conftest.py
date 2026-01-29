@@ -210,6 +210,12 @@ def clear_umask():
     os.umask(old_umask)
 
 @pytest.fixture(scope='function')
+def noop_config_check():
+    with patch('cert_receive.check_configuration_section') as mock:
+        mock.return_value = 'No error', None, None
+        yield
+
+@pytest.fixture(scope='function')
 def mock_g_args():
     with patch('cert_receive.g_args') as mock:
         mock.version = False
@@ -226,3 +232,8 @@ def override_g_args(request, mock_g_args):
     request.instance.override_g_args = mock_g_args
     yield mock_g_args
     del request.instance.override_g_args
+
+@pytest.fixture(scope='function')
+def short_receive_timeout(override_g_args):
+    override_g_args.receive_timeout = 0.2
+    yield override_g_args
