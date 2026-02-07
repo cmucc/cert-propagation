@@ -179,3 +179,120 @@ class TestProtocolBasic:
         with self.simulated_stdin(b'dubious\n\n', **end_of_data), \
              pytest.raises(cr.BadSenderException, match=match):
             cr.interact_with_sender(full_config)
+
+@pytest.mark.usefixtures('noop_config_check', 'short_receive_timeout',
+                         'simulated_stdin')
+class TestProtocolPemProcessing:
+    '''
+    Test cases verifying that several variations on the PEM format can be
+    processed correctly.
+    '''
+    @foreach_end_of_data
+    @pytest.mark.parametrize('what', ['certificate', 'key'])
+    def test_unterminated_pem(self, what, end_of_data):
+        full_config = {'malformed': {}}
+        lines = [
+            'malformed',
+            '-----BEGIN CERTIFICATE-----',
+            'the certificate',
+        ]
+        if what != 'certificate':
+            lines.append('-----END CERTIFICATE-----')
+        lines.extend([
+            '-----BEGIN PRIVATE KEY-----',
+            'the private key',
+        ])
+        if what != 'key':
+            lines.append('-----END PRIVATE KEY-----')
+        lines.append('')
+        if end_of_data['close_at_end_of_data']:
+            match = r'\bEOF\b'
+        else:
+            match = r'\btimed?(-?|\s*)out\b'
+        with self.simulated_stdin(lines, linesep='\r\n', **end_of_data), \
+             pytest.raises(cr.BadSenderException, match=match):
+            cr.interact_with_sender(full_config)
+
+    @pytest.mark.parametrize(
+        'terminator',
+        ['KEY', 'X509 CERTIFICATE'],
+        ids=['key_not_certificate', 'mismatched_certificate']
+    )
+    def test_wrong_pem_terminator(self, terminator):
+        full_config = {'junk': {}}
+        lines = [
+            'junk',
+            '',
+            '-----BEGIN CERTIFICATE-----',
+            'of achievement',
+            '-----END {}-----'.format(terminator),
+            '',
+            '',
+            '',
+        ]
+        with self.simulated_stdin(lines), \
+             pytest.raises(cr.BadSenderException, match=r'\bEOF\b'):
+            cr.interact_with_sender(full_config)
+
+    def test_bad_pem_linesep_in_delimiter(self):
+        full_config = {'bleh': {}}
+        lines = [
+            'bleh',
+            '-----BEGIN CERTIFICATE-----',
+            'whatever',
+            '-----END CERT',
+            'IFICATE-----',
+            '',
+        ]
+        with self.simulated_stdin(lines, line_delay=0.04), \
+             pytest.raises(cr.BadSenderException, match=r'\bEOF\b'):
+            cr.interact_with_sender(full_config)
+
+    @pytest.mark.parametrize('where', ['after_begin', 'before_end'])
+    def test_bad_pem_extra_dash(self, where):
+        full_config = {'bleh': {}}
+        lines = [
+            'bleh',
+            '-----BEGIN CERTIFICATE-----' +
+            ('-' if where == 'after_begin' else ''),
+            'whatever',
+            ('-' if where == 'before_end' else '') +
+            '-----END CERTIFICATE-----',
+            '',
+        ]
+        if where == 'after_begin':
+            match = r'\bnot?\b.*\bcertificates?\b'
+        else:
+            match = r'\bEOF\b'
+        with self.simulated_stdin(lines, byte_delay=0.002), \
+             pytest.raises(cr.BadSenderException, match=match):
+            cr.interact_with_sender(full_config)
+
+    def test_bad_pem_unknown_label(self):
+        full_config = {'bleh': {}}
+        lines = [
+            'bleh',
+            '',
+            '',
+            '-----start of X.509 certificate-----',
+            'a human would know what I meant',
+            '-----END X.509 CERTIFICATE-----',
+            '',
+        ]
+        with self.simulated_stdin(lines, line_delay=0.04), \
+             pytest.raises(cr.BadSenderException,
+                           match=r'\bnot?\b.*\bcertificates?\b'):
+            cr.interact_with_sender(full_config)
+
+    def test_bad_pem_backwards(self):
+        full_config = {'bleh': {}}
+        lines = [
+            'bleh',
+            '-----END X509 CERTIFICATE-----',
+            'oopsie daisy, got it backwards',
+            '-----BEGIN X509 CERTIFICATE-----',
+            '',
+        ]
+        with self.simulated_stdin(lines, byte_delay=0.002), \
+              pytest.raises(cr.BadSenderException, match=r'\bEOF\b'):
+            cr.interact_with_sender(full_config)
