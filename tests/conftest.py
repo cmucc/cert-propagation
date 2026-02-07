@@ -1,6 +1,12 @@
 from collections import namedtuple
+from contextlib import contextmanager
+import errno
 from datetime import datetime, timedelta, timezone
+import os
 import os.path
+from threading import Event, Thread
+import sys
+import time
 from unittest.mock import patch
 
 try:
@@ -237,3 +243,112 @@ def override_g_args(request, mock_g_args):
 def short_receive_timeout(override_g_args):
     override_g_args.receive_timeout = 0.2
     yield override_g_args
+
+def simulated_input_thread(fd, terminate, data, linesep,
+                           byte_delay, line_delay, close_at_end_of_data):
+    if isinstance(data, (bytes, str)):
+        data = [data]
+
+    def do_one_line(line, is_last=False):
+        if isinstance(line, str):
+            line = line.encode()
+        if not line and is_last:
+            return
+        if byte_delay is not None:
+            for byte in (bytes((b,)) for b in line):
+                written = os.write(fd, byte)
+                if written == 0:
+                    raise IOError(errno.EPIPE, os.strerror(errno.EPIPE))
+                time.sleep(byte_delay)
+                if terminate.is_set():
+                    return
+            if not is_last:
+                for byte in (bytes((b,)) for b in linesep):
+                    written = os.write(fd, byte)
+                    if written == 0:
+                        raise IOError(errno.EPIPE, os.strerror(errno.EPIPE))
+                    if line_delay is None:
+                        time.sleep(byte_delay)
+                if line_delay is not None:
+                    time.sleep(line_delay)
+            return
+        if not is_last:
+            line = line + linesep
+        while line:
+            written = os.write(fd, line)
+            if written == 0:
+                raise IOError(errno.EPIPE, os.strerror(errno.EPIPE))
+            line = line[written:]
+        if not is_last and line_delay is not None:
+            time.sleep(line_delay)
+
+    try:
+        itr = iter(data)
+        this_line = next(itr)
+        for next_line in itr:
+            do_one_line(this_line)
+            if terminate.is_set():
+                break
+            this_line = next_line
+        else:
+            do_one_line(this_line, is_last=True)
+    except (IOError, OSError):
+        os.close(fd)
+    else:
+        if close_at_end_of_data:
+            os.close(fd)
+        terminate.wait()
+        if not close_at_end_of_data:
+            os.close(fd)
+
+@contextmanager
+def simulated_input_manager(data, linesep=b'\n',
+                            byte_delay=None, line_delay=None,
+                            close_at_end_of_data=True):
+    if not isinstance(linesep, bytes):
+        linesep = linesep.encode()
+    pipe_read, pipe_write = os.pipe()
+    terminate = Event()
+    worker = Thread(target=simulated_input_thread,
+                    args=(pipe_write, terminate, data),
+                    kwargs={
+                        'linesep': linesep,
+                        'byte_delay': byte_delay,
+                        'line_delay': line_delay,
+                        'close_at_end_of_data': close_at_end_of_data
+                    })
+    try:
+        worker.start()
+        yield pipe_read
+    finally:
+        terminate.set()
+        worker.join()
+        try:
+            os.close(pipe_read)
+        except (IOError, OSError) as exc:
+            if exc.errno != errno.EBADF:
+                raise
+
+@pytest.fixture(scope='class')
+def simulated_input(request):
+    request.cls.simulated_input = staticmethod(simulated_input_manager)
+    yield simulated_input_manager
+    del request.cls.simulated_input
+
+@contextmanager
+def simulated_stdin_manager(data, linesep=b'\n',
+                            byte_delay=None, line_delay=None,
+                            close_at_end_of_data=True):
+    with simulated_input_manager(
+            data, linesep=linesep,
+            byte_delay=byte_delay, line_delay=line_delay,
+            close_at_end_of_data=close_at_end_of_data) as input_fd, \
+         patch.object(sys.stdin, 'fileno') as mock:
+        mock.return_value = input_fd
+        yield
+
+@pytest.fixture(scope='class')
+def simulated_stdin(request):
+    request.cls.simulated_stdin = staticmethod(simulated_stdin_manager)
+    yield simulated_stdin_manager
+    del request.cls.simulated_stdin
