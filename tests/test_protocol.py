@@ -15,42 +15,36 @@
 # You should have received a copy of the GNU General Public License along
 # with cert-propagation. If not, see <https://www.gnu.org/licenses/>.
 
-from contextlib import contextmanager
-import errno
-import io
-import os
 import re
-import sys
-from tempfile import TemporaryFile
-from unittest.mock import patch
 
 import pytest
 
 import cert_receive as cr
 
-@pytest.mark.usefixtures('noop_config_check', 'short_receive_timeout')
-class TestProtocol:
-    @staticmethod
-    @contextmanager
-    def simulated_stdin(lines, linesep='\n'):
-        if not isinstance(lines, (bytes, str)):
-            if isinstance(lines[0], bytes):
-                lines = linesep.encode().join(lines)
-            else:
-                lines = linesep.join(lines)
-        if not isinstance(lines, bytes):
-            lines = lines.encode()
-        with TemporaryFile() as f:
-            f.write(lines)
-            f.seek(0, io.SEEK_SET)
-            with patch('sys.stdin', new=f):
-                yield f
+foreach_linesep = pytest.mark.parametrize(
+    'linesep',
+    ['\n', '\r\n'],
+    ids=['unix', 'msdos'],
+)
 
-    foreach_linesep = pytest.mark.parametrize('linesep', ['\n', '\r\n'],
-                                              ids=['unix', 'msdos'])
+foreach_delay = pytest.mark.parametrize(
+    'delay',
+    [{}, {'byte_delay': 0.002}, {'line_delay': 0.04}],
+    ids=['no_delay', 'byte_delay', 'line_delay'],
+)
 
+foreach_end_of_data = pytest.mark.parametrize(
+    'end_of_data',
+    [{'close_at_end_of_data': True}, {'close_at_end_of_data': False}],
+    ids=['close', 'no_close'],
+)
+
+@pytest.mark.usefixtures('noop_config_check', 'short_receive_timeout',
+                         'simulated_stdin')
+class TestProtocolBasic:
+    @foreach_delay
     @foreach_linesep
-    def test_certificate_and_key(self, linesep):
+    def test_certificate_and_key(self, linesep, delay):
         full_config = {'example': {}}
         lines = [
             'example',
@@ -62,7 +56,7 @@ class TestProtocol:
             '-----END PRIVATE KEY-----',
             '',
         ]
-        with self.simulated_stdin(lines, linesep=linesep):
+        with self.simulated_stdin(lines, linesep=linesep, **delay):
             section, certs, key = cr.interact_with_sender(full_config)
         assert section is full_config['example']
         assert len(certs) == 1
@@ -78,8 +72,9 @@ class TestProtocol:
         assert not cert_re.search(key)
         assert key_re.search(key)
 
+    @foreach_delay
     @foreach_linesep
-    def test_certificate_only(self, linesep):
+    def test_certificate_only(self, linesep, delay):
         full_config = {'lil': {}}
         lines = [
             'lil',
@@ -88,7 +83,7 @@ class TestProtocol:
             '-----END CERTIFICATE-----',
             '',
         ]
-        with self.simulated_stdin(lines, linesep=linesep):
+        with self.simulated_stdin(lines, linesep=linesep, **delay):
             section, certs, key = cr.interact_with_sender(full_config)
         assert section is full_config['lil']
         assert len(certs) == 1
@@ -118,8 +113,9 @@ class TestProtocol:
             certs = [cert.replace(linesep, '\n') for cert in certs]
         assert re.search(r'^:-\)$', certs[0], re.MULTILINE)
 
+    @foreach_delay
     @foreach_linesep
-    def test_certificate_chain(self, linesep):
+    def test_certificate_chain(self, linesep, delay):
         full_config = {'link': {}}
         lines = [
             'link',
@@ -133,7 +129,7 @@ class TestProtocol:
             '-----END CERTIFICATE-----',
             '',
         ]
-        with self.simulated_stdin(lines, linesep=linesep):
+        with self.simulated_stdin(lines, linesep=linesep, **delay):
             section, certs, key = cr.interact_with_sender(full_config)
         assert section is full_config['link']
         assert len(certs) == 2
@@ -163,14 +159,23 @@ class TestProtocol:
                            match=r'\bnot?\b.*\bcertificates?\b'):
             cr.interact_with_sender(full_config)
 
-    def test_no_input(self):
-        with self.simulated_stdin(b''), \
-             pytest.raises(cr.BadSenderException, match=r'\bEOF\b'):
+    @foreach_end_of_data
+    def test_no_input(self, end_of_data):
+        if end_of_data['close_at_end_of_data']:
+            match = r'\bEOF\b'
+        else:
+            match = r'\btimed?(-?|\s*)out\b'
+        with self.simulated_stdin(b'', **end_of_data), \
+             pytest.raises(cr.BadSenderException, match=match):
             cr.interact_with_sender({})
 
-    def test_config_name_only(self):
+    @foreach_end_of_data
+    def test_config_name_only(self, end_of_data):
         full_config = {'dubious': {}}
-        with self.simulated_stdin(b'dubious\n\n'), \
-             pytest.raises(cr.BadSenderException,
-                           match=r'\bnot?\b.*\bcertificates?\b'):
+        if end_of_data['close_at_end_of_data']:
+            match = r'\bnot?\b.*\bcertificates?\b'
+        else:
+            match = r'\btimed?(-?|\s*)out\b'
+        with self.simulated_stdin(b'dubious\n\n', **end_of_data), \
+             pytest.raises(cr.BadSenderException, match=match):
             cr.interact_with_sender(full_config)
