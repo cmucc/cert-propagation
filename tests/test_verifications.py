@@ -277,6 +277,10 @@ class TestVerifications:
         for key in cr.CFG_VALID_SETTINGS:
             if key.startswith('verify_'):
                 config[key] = False
+        config['bundle_key'] = False
+        config['bundle_intermediate'] = False
+        config['intermediate_path'] = '/bogus1'
+        config['key_path'] = '/bogus2'
         return config
 
     def test_verifications_disabled(self):
@@ -284,8 +288,7 @@ class TestVerifications:
         # Would raise an exception on failure
         cr.perform_verifications(config,
                                  ['whiskey tango foxtrot', 'oscar kilo'],
-                                 'SNAFU',
-                                 None)
+                                 'SNAFU')
 
     def test_verify_loadable_positive(self):
         config = self.get_no_verify_config()
@@ -293,8 +296,7 @@ class TestVerifications:
         # Would raise an exception on failure
         cr.perform_verifications(config,
                                  [self.get_cert(key_num=3)],
-                                 self.get_key(key_num=1),
-                                 None)
+                                 self.get_key(key_num=1))
 
     def test_verify_loadable_bad_certificate(self):
         config = self.get_no_verify_config()
@@ -302,8 +304,7 @@ class TestVerifications:
         with pytest.raises(cr.BadCertificateException):
             cr.perform_verifications(config,
                                      ['Just some garbage!\n'],
-                                     self.get_key(key_num=2),
-                                     None)
+                                     self.get_key(key_num=2))
 
     def test_verify_loadable_bad_key(self):
         config = self.get_no_verify_config()
@@ -311,5 +312,4 @@ class TestVerifications:
         with pytest.raises(cr.BadKeyException):
             cr.perform_verifications(config,
                                      [self.get_cert(key_num=1)],
-                                     'Could this unlock anything?\n',
-                                     None)
+                                     'Could this unlock anything?\n')
