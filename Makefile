@@ -10,7 +10,7 @@ PYTHON = python3
 
 build : build-nonpython build-python
 
-build-nonpython :
+build-nonpython : cert_receive.8
 
 build-python : build-python-stamp wrapper/cert_receive.py
 
@@ -28,6 +28,11 @@ check-python : build-python
 	cd build/lib && $$USE_FAKEROOT $(PYTHON) -m pytest ../../tests
 
 .PHONY : check check-nonpython check-python
+
+cert_receive.8 : cert_receive.py.8
+	sed -e 's/\(CERT_RECEIVE\)\.PY/\1/g' \
+	    -e 's/\(cert_receive\)\.py/\1/g' $< > $@ || \
+	{ rm -f $@; exit 1; }
 
 build-python-stamp : cert_receive/*.py pyproject.toml
 	$(PYTHON) -m build --no-isolation --skip-dependency-check --wheel
@@ -48,20 +53,23 @@ clean :
 	rm -rf build build-python-stamp cert_receive.egg-info dist pip_install_*
 	find . -path ./.tox -prune -o \
 	       -name __pycache__ -type d -prune -exec rm -rf {} \;
-	rm -f wrapper/cert_receive.py
+	rm -f cert_receive.8 wrapper/cert_receive.py
 
 distclean : clean
 	rm -rf .tox config.mk
 
 .PHONY : clean distclean
 
-install : install-nonpython install-python
+install : install-common install-python
 
-install-nonpython :
+install-common :
 	$(INSTALL) -d $(DESTDIR)$(sbindir) $(DESTDIR)$(mandir)/man5 $(DESTDIR)$(mandir)/man8
 	$(INSTALL) -t $(DESTDIR)$(sbindir) -m 0755 certbot_send.sh
 	$(INSTALL) -t $(DESTDIR)$(mandir)/man5 -m 0644 cert_receive.json.5 certbot_send.5
-	$(INSTALL) -t $(DESTDIR)$(mandir)/man8 -m 0644 cert_receive.py.8 certbot_send.sh.8
+	$(INSTALL) -t $(DESTDIR)$(mandir)/man8 -m 0644 certbot_send.sh.8
+
+install-nonpython : build-nonpython install-common
+	$(INSTALL) -t $(DESTDIR)$(mandir)/man8 -m 0644 cert_receive.8
 
 pip_install = $(PYTHON) -m pip install --no-deps --no-index
 
@@ -86,7 +94,8 @@ else
 	$(pip_install) --target $(DESTDIR)$(privatepythondir) dist/*.whl
 	rm -rf $(DESTDIR)$(privatepythondir)/bin
 endif
-	$(INSTALL) -d $(DESTDIR)$(sbindir)
+	$(INSTALL) -d $(DESTDIR)$(sbindir) $(DESTDIR)$(mandir)/man8
 	$(INSTALL) -t $(DESTDIR)$(sbindir) -m 0755 wrapper/cert_receive.py
+	$(INSTALL) -t $(DESTDIR)$(mandir)/man8 -m 0644 cert_receive.py.8
 
-.PHONY : install install-nonpython install-python
+.PHONY : install install-common install-nonpython install-python

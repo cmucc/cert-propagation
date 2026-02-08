@@ -2,6 +2,7 @@ __pycache__/
 /*-stamp
 /.tox/
 /build/
+/cert_receive.8
 /cert_receive.egg-info/
 /config.mk
 /dist/
