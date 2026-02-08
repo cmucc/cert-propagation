@@ -366,7 +366,7 @@ def interact_with_sender(full_config):
         # to apply byte regular expressions where all literals are ASCII.
         sender.expect(br'^([^\r\n]*)[\r\n]')
         name = sender.match.group(1).decode()
-        if not re.match(r'\w+$', name):
+        if not re.match(r'[-\.\w]+$', name):
             raise BadSenderException('Aborting, received an invalid '
                                      'configuration name')
         if name not in full_config:
