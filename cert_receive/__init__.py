@@ -792,7 +792,30 @@ def perform_verifications(config, certificates, key, key_file_name):
                                               'from sender:\n' + str(e))
         return cert_object_storage
 
+    def make_key_object(kdata):
+        """
+        Helper for constructing a private key object from its PEM
+        representation.
+        """
+        try:
+            kobject = ssl_crypto.load_privatekey(
+                                 ssl_crypto.FILETYPE_PEM, kdata.encode())
+            try:
+                kobject.check()
+            except TypeError:
+                # This happens if the key is non-RSA; only RSA keys support check()
+                pass
+        except ssl_crypto.Error as e:
+            raise BadKeyException('Error loading private key:\n' + str(e))
+        return kobject
+
+    key_object = None
     cannot_reverse = False
+
+    if config['verify_loadable']:
+        _ = get_cert_objects()
+        if key is not None:
+            key_object = make_key_object(key)
 
     if config['verify_chain']:
         try:
@@ -818,25 +841,16 @@ def perform_verifications(config, certificates, key, key_file_name):
             verify_certificate_subject_cn(get_cert_objects()[0], expected_cn)
         cannot_reverse = True
 
-    if config['verify_matching_key'] and key is None:
-        if key_file_name is None:
-            raise BadConfigException('Error, "verify_matching_key" is true, '
-                                     'but we do not have a private key to '
-                                     'check certificate from sender against')
-        key = read_key_from_file(key_file_name)
-
-    if key is not None:
-        try:
-            key_object = ssl_crypto.load_privatekey(
-                                 ssl_crypto.FILETYPE_PEM, key.encode())
-            key_object.check()
-        except TypeError:
-            # This happens if the key is non-RSA; only RSA keys support check()
-            pass
-        except ssl_crypto.Error as e:
-            raise BadKeyException('Error loading private key:\n' + str(e))
-
     if config['verify_matching_key']:
+        if key is None:
+            if key_file_name is None:
+                raise BadConfigException('Error, "verify_matching_key" is '
+                                         'true, but we do not have a private '
+                                         "key to check the sender's "
+                                         'certificate against')
+            key = read_key_from_file(key_file_name)
+        if key_object is None:
+            key_object = make_key_object(key)
         try:
             verify_certificate_matches_key(config,
                                            get_cert_objects()[0],
