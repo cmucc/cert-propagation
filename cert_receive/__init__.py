@@ -782,7 +782,7 @@ def verify_certificate_issued_by_trusted_ca(config, certificates, cert_objects):
     else:
         _verify_trust_openssl_subprocess(config, certificates)
 
-def perform_verifications(config, certificates, key, key_file_name):
+def perform_verifications(config, certificates, key):
     cert_object_storage = []
     def get_cert_objects():
         """
@@ -818,6 +818,18 @@ def perform_verifications(config, certificates, key, key_file_name):
             raise BadKeyException('Error loading private key:\n' + str(e))
         return kobject
 
+    if (key is not None and
+            'key_path' not in config and
+            not config['bundle_key']):
+        raise BadConfigException('Error, received a private key from sender, '
+                                 'but no destination for it is configured')
+    if (len(certificates) > 1 and
+           'intermediate_path' not in config and
+           not config['bundle_intermediate']):
+        raise BadConfigException('Error, received one or more intermediate '
+                                 'certificates, but no destination for them '
+                                 'is configured')
+
     key_object = None
     cannot_reverse = False
 
@@ -852,12 +864,13 @@ def perform_verifications(config, certificates, key, key_file_name):
 
     if config['verify_matching_key']:
         if key is None:
-            if key_file_name is None:
+            try:
+                key = read_key_from_file(config['key_path'])
+            except KeyError:
                 raise BadConfigException('Error, "verify_matching_key" is '
                                          'true, but we do not have a private '
                                          "key to check the sender's "
                                          'certificate against')
-            key = read_key_from_file(key_file_name)
         if key_object is None:
             key_object = make_key_object(key)
         try:
@@ -1177,14 +1190,7 @@ def main():
 
         config, certificates, key = interact_with_sender(config)
 
-        key_file_name = config.get('key_path')
-        if config['bundle_key']:
-            key_file_name = config['certificate_path']
-        if key is not None and key_file_name is None:
-            raise BadConfigException('Error, received a private key from sender, '
-                                     'but no destination for it is configured',)
-
-        perform_verifications(config, certificates, key, key_file_name)
+        perform_verifications(config, certificates, key)
 
         reacquire_privileges()
 
