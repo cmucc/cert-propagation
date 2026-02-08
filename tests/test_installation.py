@@ -13,7 +13,7 @@ import cert_receive as cr
 
 @pytest.mark.usefixtures('override_g_args')
 class TestInstallation:
-    def add_defaults_and_process_config(self, config):
+    def add_defaults_and_process_config(self, config, allow_warn=False):
         for key in cr.CFG_DEFAULT_SETTINGS:
             if key in config:
                 continue
@@ -22,11 +22,14 @@ class TestInstallation:
         self.override_g_args.ca_path = None
         self.override_g_args.config_file = 'mock_config.json'
         header, errors, warnings = cr.check_configuration_section('test', config)
-        if errors or warnings:
-            assert False, '\n'.join(['Expected configuration check to pass without '
-                                     'errors or warnings but it reported:\n',
+        if errors or (warnings and not allow_warn):
+            assert False, '\n'.join(['Expected configuration check to pass '
+                                     'without errors{} but it reported:\n'.
+                                     format(' or warnings' if allow_warn else ''),
                                      header] +
                                     errors + warnings)
+        if warnings:
+            print('\n'.join(warnings), file=sys.stderr)
 
     @pytest.mark.parametrize('what', ['certificate', 'key'])
     def test_write_one_file_basic(self, what, tmp_path):
@@ -234,7 +237,7 @@ class TestInstallation:
 
     SENTINEL = object()
 
-    def prepare_install_files(self, tmp_path, config):
+    def prepare_install_files(self, tmp_path, config, allow_warn=False):
         paths = [
             ('certificate', tmp_path / 'cert'),
             ('intermediate', tmp_path / 'chain'),
@@ -247,7 +250,7 @@ class TestInstallation:
                 config[key] = str(path)
             elif exist is None:
                 del config[key]
-        self.add_defaults_and_process_config(config)
+        self.add_defaults_and_process_config(config, allow_warn=allow_warn)
         return (x[1] for x in paths)
 
     @staticmethod
@@ -390,8 +393,48 @@ class TestInstallation:
         assert cert.read_text() == 'Certified!\nKey?\n'
         st = cert.lstat()
         assert stat.S_IMODE(st.st_mode) & 0o077 == 0
-        assert not chain.exists()
+        assert chain.read_text() == ''
         assert not key.exists()
+
+    @pytest.mark.parametrize('mode', ['empty', 'preserve', 'unlink'])
+    def test_install_files_nochain(self, mode, tmp_path):
+        config = {
+            'if_no_intermediate': mode,
+        }
+        cert, chain, key = self.prepare_install_files(tmp_path, config)
+        chain_bak, = self.make_backup_paths(chain)
+        certs_data = ['Lonely {} whale\n'.format(mode)]
+        chain.write_text('({})This data is obsolete!\n'.format(mode))
+        key_data = 'Unlocks all my dreams\n{}\n'.format(hash(mode))
+        cr.install_files(config, certs_data, key_data)
+        assert cert.read_text() == 'Lonely {} whale\n'.format(mode)
+        if mode == 'empty':
+            assert chain.read_text() == ''
+            assert chain_bak.read_text() == '({})This data is obsolete!\n'.format(mode)
+        if mode == 'preserve':
+            assert chain.read_text() == '({})This data is obsolete!\n'.format(mode)
+            assert not chain_bak.exists()
+        if mode == 'unlink':
+            assert not chain.exists()
+            assert chain_bak.read_text() == '({})This data is obsolete!\n'.format(mode)
+        assert key.read_text() == 'Unlocks all my dreams\n{}\n'.format(hash(mode))
+
+    @pytest.mark.parametrize('mode', ['empty', 'unlink'])
+    def test_install_files_nochain_bundle_intermediate_path(self, mode, tmp_path):
+        config = {
+            'bundle_intermediate': True,
+            'if_no_intermediate': mode,
+        }
+        cert, chain, key = self.prepare_install_files(tmp_path, config, allow_warn=True)
+        chain_bak, = self.make_backup_paths(chain)
+        chain.write_text('DO NOT {} THIS FILE!\n'.format(mode))
+        certs_data = ['{}application\n'.format(mode)]
+        key_data = 'key {}\n'.format(hash(mode))
+        cr.install_files(config, certs_data, key_data)
+        assert cert.read_text() == '{}application\n'.format(mode)
+        assert chain.read_text() == 'DO NOT {} THIS FILE!\n'.format(mode)
+        assert not chain_bak.exists()
+        assert key.read_text() == 'key {}\n'.format(hash(mode))
 
     def test_install_files_backups(self, tmp_path):
         config = {}

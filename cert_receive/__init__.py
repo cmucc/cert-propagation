@@ -136,6 +136,7 @@ CFG_VALID_SETTINGS = {
     'certificate_path':         str,
     'certificate_perms':        str,
     'expected_subject_cn':      str,
+    'if_no_intermediate':       frozenset(('empty', 'preserve', 'unlink')),
     'intermediate_order':       frozenset(('ca_first', 'ca_last')),
     'intermediate_path':        str,
     'key_group':                str,
@@ -161,6 +162,7 @@ CFG_DEFAULT_SETTINGS = {
     'certificate_group':        'root',
     'certificate_owner':        'root',
     'certificate_perms':        '0644',
+    'if_no_intermediate':       'empty',
     'intermediate_order':       'ca_last',
     'key_group':                'root',
     'key_owner':                'root',
@@ -241,9 +243,16 @@ def check_configuration_section(name, section):
                                 '"bundle_key" is false')
 
         if section.get('bundle_intermediate', False):
-            if 'intermediate_path' in section:
-                warnings.append('setting "intermediate_path" does not apply '
-                                'when "bundle_intermediate" is true')
+            for setting in ('if_no_intermediate', 'intermediate_path'):
+                if setting in section:
+                    warnings.append('setting "{}" does not apply when '
+                                    '"bundle_intermediate" is true'
+                                    .format(setting))
+            # The user could have an intermediate_path set despite the fact
+            # they're actually bundling the intermediates.  To make sure we
+            # don't muck with intermediate_path, we'll set the option to
+            # preserve it.
+            section['if_no_intermediate'] = 'preserve'
 
         if 'reload_command' not in section:
             if 'reload_timeout' in section:
@@ -872,7 +881,8 @@ def perform_verifications(config, certificates, key, key_file_name):
 
 def write_one_file(file_name, data, config, setting_prefix):
     with open(file_name, 'wb') as f:
-        f.write(data.encode())
+        if data:
+            f.write(data.encode())
     uid, gid = (config[setting_prefix + x] for x in ('owner', 'group'))
     if os.geteuid() == 0:
         os.chown(file_name, uid, gid)
@@ -891,7 +901,8 @@ def backup_one_file(file_name, new_data, backup_file_name):
     except FileNotFoundError:
         return BACKUP_NOEXIST
 
-    if existing_data == new_data.encode():
+    if (new_data is not None and
+            existing_data == new_data.encode()):
         return BACKUP_SAMEDATA
 
     with open(backup_file_name, 'wb') as f:
@@ -929,6 +940,10 @@ def install_files(config, certificates, key):
     certificate_data = ''.join(certificate_data)
     intermediate_data = ''.join(intermediate_data)
 
+    intermediate_operation = None
+    if not intermediate_data:
+        intermediate_operation = config['if_no_intermediate']
+
     tmpsuffix = '.new-{}'.format(os.getpid())
 
     old_umask = os.umask(0o077)
@@ -946,7 +961,10 @@ def install_files(config, certificates, key):
             file_name = config.get(thing + '_path')
             if thing == 'key' and config['bundle_key']:
                 file_name = config['certificate_path']
-            if data and file_name:
+            do_install = bool(data)
+            if thing == 'intermediate' and intermediate_operation == 'empty':
+                do_install = True
+            if do_install and file_name:
                 written_as_tmpfile.append(file_name)
                 written_data.append(data)
                 write_one_file(file_name + tmpsuffix, data, config, prefix)
@@ -957,6 +975,15 @@ def install_files(config, certificates, key):
             except OSError:
                 backed_up[file_name] = BACKUP_FAILED
                 raise
+
+        if intermediate_operation == 'unlink':
+            file_name = config.get('intermediate_path')
+            if file_name:
+                try:
+                    backed_up[file_name] = backup_one_file(file_name, None, file_name + '.bak')
+                except OSError:
+                    backed_up[file_name] = BACKUP_FAILED
+                    raise
 
         # Reverse written_as_tmpfile so that working backwards popping
         # elements performs the renames in the same order the tmpfiles were
@@ -973,6 +1000,15 @@ def install_files(config, certificates, key):
         finally:
             written_as_tmpfile.reverse()
 
+        if intermediate_operation == 'unlink':
+            file_name = config.get('intermediate_path')
+            if file_name:
+                try:
+                    os.unlink(file_name)
+                    installed.append(file_name)
+                except FileNotFoundError:
+                    pass
+
     except OSError as e:
         recovered = True
         for tmpfile in [x + tmpsuffix for x in written_as_tmpfile]:
@@ -987,7 +1023,10 @@ def install_files(config, certificates, key):
                 if backup_state is BACKUP_SUCCESS:
                     os.rename(file_name + '.bak', file_name)
                 elif backup_state is BACKUP_NOEXIST:
-                    os.unlink(file_name)
+                    try:
+                        os.unlink(file_name)
+                    except FileNotFoundError:
+                        pass
                 # The file_name will only end up in the installed list if we
                 # obtained a non-failure result while backing it up.  Hence
                 # any partial back-up for a file with a BACKUP_FAILED result
