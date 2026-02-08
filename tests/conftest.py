@@ -217,6 +217,12 @@ def clear_umask():
     os.umask(old_umask)
 
 @pytest.fixture(scope='function')
+def noop_privileges():
+    with patch('cert_receive.drop_privileges'), \
+         patch('cert_receive.reacquire_privileges'):
+        yield
+
+@pytest.fixture(scope='function')
 def noop_config_check():
     with patch('cert_receive.check_configuration_section') as mock:
         mock.return_value = 'No error', None, None
