@@ -3,12 +3,8 @@ Upstream-Name: cert-propagation
 Source: https://github.com/cmucc/cert-propagation
 
 Files: *
-Copyright: 2022-2023 Keith A. Bare II <105995606+keithbare2@users.noreply.github.com>
-License: GPL-3.0+
-
-Files: debian/*
-Copyright: 2022 Keith A. Bare II <105995606+keithbare2@users.noreply.github.com>
-License: GPL-3.0+
+Copyright: 2022-2026 Keith Allen Bare II
+License: GPL-3.0-or-later
 
 Files: tox_helpers/cryptography-0.6.1.diff
 Copyright: 2013-2014 The cryptography developers
@@ -39,7 +35,7 @@ License: Expat
  FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
  DEALINGS IN THE SOFTWARE.
 
-License: GPL-3.0+
+License: GPL-3.0-or-later
  This program is free software: you can redistribute it and/or modify
  it under the terms of the GNU General Public License as published by
  the Free Software Foundation, either version 3 of the License, or
@@ -52,7 +48,7 @@ License: GPL-3.0+
  .
  You should have received a copy of the GNU General Public License
  along with this program. If not, see <https://www.gnu.org/licenses/>.
- .
+Comment:
  On Debian systems, the complete text of the GNU General
  Public License version 3 can be found in "/usr/share/common-licenses/GPL-3".
 
