@@ -14,7 +14,11 @@ wrapper/cert_receive.py : wrapper/cert_receive.py.in
 	{ rm -f $@; exit 1; }
 
 check :
-	fakeroot $(PYTHON) -m pytest
+	USE_FAKEROOT=; \
+	if [ -z "$$FAKEROOTKEY" ] && command -v fakeroot >/dev/null; then \
+	    USE_FAKEROOT=fakeroot; \
+	fi; \
+	$$USE_FAKEROOT $(PYTHON) -m pytest
 
 clean :
 	rm -rf build cert_receive.egg-info dist
