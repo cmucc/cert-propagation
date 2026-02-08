@@ -317,12 +317,17 @@ def interact_with_sender(full_config):
     '''
     sender = pexpect.fdpexpect.fdspawn(os.dup(sys.stdin.fileno()),
                                        timeout=g_args.receive_timeout,
-                                       maxread=20000,
-                                       encoding='utf-8')
+                                       maxread=20000)
 
     try:
-        sender.expect(r'^(\w+)\r?\n')
-        name = sender.match.group(1)
+        # We expect the input to be UTF-8, where multibyte characters'
+        # encodings never contain bytes from 7-bit ASCII.  Hence it is safe
+        # to apply byte regular expressions where all literals are ASCII.
+        sender.expect(br'^([^\n]*?)\r?\n')
+        name = sender.match.group(1).decode()
+        if not re.match(r'\w+$', name):
+            raise BadSenderException('Aborting, received an invalid '
+                                     'configuration name')
         if name not in full_config:
             print('Unknown configuration')
             raise BadConfigException('Aborting, no configuration section '
@@ -344,16 +349,16 @@ def interact_with_sender(full_config):
             scratch = []
 
             sender.expect([
-                r'^-----BEGIN ((?:X509 |TRUSTED |)CERTIFICATE)-----\r?\n',
-                r'^-----BEGIN ((?:RSA )?PRIVATE KEY)-----\r?\n',
-                r'^()\r?\n',
+                br'^-----BEGIN ((?:X509 |TRUSTED |)CERTIFICATE)-----\r?\n',
+                br'^-----BEGIN ((?:RSA )?PRIVATE KEY)-----\r?\n',
+                br'^()\r?\n',
                 pexpect.EOF,
             ])
             if sender.match is pexpect.EOF:
                 break
             elif not sender.match.group(1):
                 continue
-            elif sender.match.group(1).endswith('PRIVATE KEY') and \
+            elif sender.match.group(1).endswith(b'PRIVATE KEY') and \
                  key is not None:
                 raise BadSenderException('Aborting, received more than one '
                                          'private key')
@@ -361,15 +366,19 @@ def interact_with_sender(full_config):
             scratch.append(sender.match.group(0))
 
             end_pattern = r'(?:^|\n)-----END ({})-----\r?\n' \
-                          .format(sender.match.group(1))
+                          .format(sender.match.group(1).decode()).encode()
             sender.expect(end_pattern)
             scratch.append(sender.before)
             scratch.append(sender.match.group(0))
+            pem_item = b''.join(scratch).decode().replace('\r', '')
 
-            if sender.match.group(1).endswith('PRIVATE KEY'):
-                key = ''.join(scratch).replace('\r', '')
+            if sender.match.group(1).endswith(b'PRIVATE KEY'):
+                key = pem_item
             else:
-                certificates.append(''.join(scratch).replace('\r', ''))
+                certificates.append(pem_item)
+
+    except UnicodeError as exc:
+        raise BadSenderException('Aborting, invalid UTF-8 from sender') from exc
 
     except pexpect.EOF:
         raise BadSenderException('Aborting, unexpected EOF reading from sender')
