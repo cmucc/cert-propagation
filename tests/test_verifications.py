@@ -270,3 +270,46 @@ class TestVerifications:
             verifier(config,
                      [self.get_cert_object(intermediate_num=2, key_num=3),
                       self.get_cert_object(intermediate_num=(4, 2))])
+
+    @classmethod
+    def get_no_verify_config(cls):
+        config = cls.get_config()
+        for key in cr.CFG_VALID_SETTINGS:
+            if key.startswith('verify_'):
+                config[key] = False
+        return config
+
+    def test_verifications_disabled(self):
+        config = self.get_no_verify_config()
+        # Would raise an exception on failure
+        cr.perform_verifications(config,
+                                 ['whiskey tango foxtrot', 'oscar kilo'],
+                                 'SNAFU',
+                                 None)
+
+    def test_verify_loadable_positive(self):
+        config = self.get_no_verify_config()
+        config['verify_loadable'] = True
+        # Would raise an exception on failure
+        cr.perform_verifications(config,
+                                 [self.get_cert(key_num=3)],
+                                 self.get_key(key_num=1),
+                                 None)
+
+    def test_verify_loadable_bad_certificate(self):
+        config = self.get_no_verify_config()
+        config['verify_loadable'] = True
+        with pytest.raises(cr.BadCertificateException):
+            cr.perform_verifications(config,
+                                     ['Just some garbage!\n'],
+                                     self.get_key(key_num=2),
+                                     None)
+
+    def test_verify_loadable_bad_key(self):
+        config = self.get_no_verify_config()
+        config['verify_loadable'] = True
+        with pytest.raises(cr.BadKeyException):
+            cr.perform_verifications(config,
+                                     [self.get_cert(key_num=1)],
+                                     'Could this unlock anything?\n',
+                                     None)
