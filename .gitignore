@@ -3,6 +3,7 @@ __pycache__/
 /build/
 /cert_receive.egg-info/
 /dist/
+/debian/*.log
 /debian/.debhelper/
 /debian/cclub-cert-receive.substvars
 /debian/cclub-cert-receive/
