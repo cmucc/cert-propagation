@@ -9,6 +9,7 @@ may not maintain a stable API.
 '''
 
 import argparse
+import errno
 import grp
 import json
 import os
@@ -516,6 +517,43 @@ def verify_certificate_subject_cn(cert_object, expected_cn):
                                       'sender that does not have the expected '
                                       'subject CN')
 
+def read_from_file(file_name, max_size=OVERALL_PEM_MAXIMUM):
+    '''
+    Helper for reading data from a file.  Re-acquires privileges, opens the
+    target file, and then drops privileges in order to support reading files
+    with restrictive permissions.
+
+    Raises OSError or a derivative if an error occurs.  Indicates an EFBIG
+    errno if the file is larger than max_size.
+    '''
+    reacquire_privileges()
+
+    try:
+        fd = open(file_name, 'rt')
+    finally:
+        drop_privileges()
+
+    try:
+        st = os.stat(fd.fileno())
+        if st.st_size > max_size:
+            raise OSError(errno.EFBIG,
+                          'Refusing to load data from unexpectedly large file',
+                          file_name)
+        remaining = st.st_size
+        chunks = []
+        while remaining > 0:
+            chunk = fd.read(remaining)
+            if len(chunk) == 0:
+                break
+            remaining -= len(chunk)
+            chunks.append(chunk)
+        data = ''.join(chunks)
+
+    finally:
+        fd.close()
+
+    return data
+
 def read_key_from_file(key_file_name):
     '''
     Reads and returns an already-installed PEM private key.
@@ -525,35 +563,11 @@ def read_key_from_file(key_file_name):
     Raises BadKeyException if the key file does not appear to contain a PEM
     private key.
     '''
-    reacquire_privileges()
-
     try:
-        key_in = open(key_file_name, 'rt')
-    except IOError as e:
-        raise BadConfigException('Error opening key file:\n' + str(e))
-    finally:
-        drop_privileges()
-
-    try:
-        st = os.stat(key_in.fileno())
-        if st.st_size > 20000:
-            raise BadKeyException('Error, refusing to load private key '
-                                  'from unexpectedly large file')
-        remaining = st.st_size
-        chunks = []
-        while remaining > 0:
-            chunk = key_in.read(remaining)
-            if len(chunk) == 0:
-                break
-            remaining -= len(chunk)
-            chunks.append(chunk)
-        data = ''.join(chunks)
-
-    except IOError as e:
-        raise BadConfigException('Error reading key file:\n' + str(e))
-
-    finally:
-        key_in.close()
+        data = read_from_file(key_file_name, max_size=PEM_BLOCK_MAXIMUM)
+    except OSError as e:
+        etype = BadKeyException if e.errno == errno.EFBIG else BadConfigException
+        raise etype('Error reading key file:\n' + str(e))
 
     match = re.search(r'^-----BEGIN ((?:RSA )?PRIVATE KEY)-----\r?\n.*?'
                       r'^-----END \1-----\r?\n',
@@ -561,8 +575,31 @@ def read_key_from_file(key_file_name):
                       re.MULTILINE | re.DOTALL)
     if not match:
         raise BadKeyException('Error, could not find a PEM-encoded private '
-                              'key in the configured key file')
+                              'key in {!r}'
+                              .format(key_file_name))
     return match.group(0)
+
+def read_certificates_from_file(cert_file_name):
+    '''
+    Reads and returns PEM certificates from an already installed certificate
+    file.
+
+    Raises OSError or a derivative if there is an issue reading the file.
+
+    Raises BadCertificateException if the file does not appear to contain
+    any PEM-encoded certificates.
+    '''
+    data = read_from_file(cert_file_name)
+    certs = [match.group(0) for match in re.finditer(
+                 r'^-----BEGIN ((?:X509 |TRUSTED |)CERTIFICATE)-----\r?\n.*?'
+                 r'^-----END \1-----\r?\n',
+                 data,
+                 re.MULTILINE | re.DOTALL)]
+    if not certs:
+        raise BadCertificateException('Error, could not find any PEM-'
+                                      'encoded certificates in {!r}'
+                                      .format(cert_file_name))
+    return certs
 
 def verify_certificate_matches_key(config, cert_object, key_object):
     '''
@@ -790,16 +827,43 @@ def perform_verifications(config, certificates, key):
         verifications are configured, that work is avoided.
         """
         nonlocal cert_object_storage
-        if not cert_object_storage:
+        already_loaded = len(cert_object_storage)
+        if already_loaded < len(certificates):
             try:
-                cert_object_storage = [ssl_crypto.load_certificate(
-                                               ssl_crypto.FILETYPE_PEM,
-                                               x.encode())
-                                       for x in certificates]
+                cert_object_storage[already_loaded:] = [
+                        ssl_crypto.load_certificate(ssl_crypto.FILETYPE_PEM,
+                                                    x.encode())
+                        for x in certificates[already_loaded:]
+                ]
             except ssl_crypto.Error as e:
                 raise BadCertificateException('Error loading a certificate '
                                               'from sender:\n' + str(e))
         return cert_object_storage
+
+    intermediates_tried = False
+    cannot_reverse = False
+    def try_to_read_preserved_intermediates():
+        nonlocal certificates
+        nonlocal intermediates_tried
+        nonlocal cannot_reverse
+        if intermediates_tried:
+            return
+        intermediates_tried = True
+        if (config['bundle_intermediate'] or
+                config['if_no_intermediate'] != 'preserve' or
+                len(certificates) > 1):
+            return
+        try:
+            intermediates = read_certificates_from_file(config['intermediate_path'])
+            if config['intermediate_order'] != 'ca_last':
+                intermediates.reverse()
+            certificates = certificates + intermediates
+            cannot_reverse = True
+        except (KeyError, OSError, BadCertificateException):
+            # For any of several reasons, we couldn't read the intermediate
+            # certificates we should be preserving.  We'll simply continue
+            # attempting verifications without them.
+            pass
 
     def make_key_object(kdata):
         """
@@ -831,7 +895,6 @@ def perform_verifications(config, certificates, key):
                                  'is configured')
 
     key_object = None
-    cannot_reverse = False
 
     if config['verify_loadable']:
         _ = get_cert_objects()
@@ -839,15 +902,19 @@ def perform_verifications(config, certificates, key):
             key_object = make_key_object(key)
 
     if config['verify_chain']:
+        try_to_read_preserved_intermediates()
         try:
             verify_certificate_chain(get_cert_objects())
         except BadCertificateException:
+            if cannot_reverse:
+                raise
             certificates.reverse()
             get_cert_objects().reverse()
             verify_certificate_chain(get_cert_objects())
         cannot_reverse = True
 
     if config['verify_dates']:
+        try_to_read_preserved_intermediates()
         verify_certificate_dates(get_cert_objects())
 
     if config['verify_subject_cn']:
@@ -888,6 +955,7 @@ def perform_verifications(config, certificates, key):
         cannot_reverse = True
 
     if config['verify_trusted_ca']:
+        try_to_read_preserved_intermediates()
         verify_certificate_issued_by_trusted_ca(config,
                                                 certificates,
                                                 get_cert_objects())

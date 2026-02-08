@@ -313,3 +313,77 @@ class TestVerifications:
             cr.perform_verifications(config,
                                      [self.get_cert(key_num=1)],
                                      'Could this unlock anything?\n')
+
+    def test_verify_existing_key_and_intermediates(self, noop_privileges, tmp_path):
+        config = self.get_config()
+        config['if_no_intermediate'] = 'preserve'
+        config['verify_subject_cn'] = False
+
+        config['ca_file'] = self.write_ca_file([3], tmp_path)
+        key_path = tmp_path / 'key.pem'
+        key_path.write_text(self.get_key(key_num=4))
+        config['key_path'] = str(key_path)
+        chain_path = tmp_path / 'chain.pem'
+        chain_path.write_text(self.get_cert(ca_num=3, intermediate_num=2))
+        config['intermediate_path'] = str(chain_path)
+
+        for setting, value in cr.CFG_DEFAULT_SETTINGS.items():
+            config.setdefault(setting, value)
+        cr.perform_verifications(config,
+                                 [self.get_cert(intermediate_num=2, key_num=4)],
+                                 None)
+
+    @pytest.mark.parametrize('nil_type', ['empty', 'missing'])
+    def test_verify_existing_key_and_nil_intermediates(self, nil_type, noop_privileges, tmp_path):
+        config = self.get_config()
+        config['if_no_intermediate'] = 'preserve'
+        config['verify_subject_cn'] = False
+
+        config['ca_path'] = self.write_ca_directory([2], tmp_path)
+        key_path = tmp_path / 'privkey.pem'
+        key_path.write_text(self.get_key(key_num=1))
+        config['key_path'] = str(key_path)
+        chain_path = tmp_path / 'chain.pem'
+        if nil_type == 'empty':
+            chain_path.write_text('')
+        config['intermediate_path'] = str(chain_path)
+
+        for setting, value in cr.CFG_DEFAULT_SETTINGS.items():
+            config.setdefault(setting, value)
+        cr.perform_verifications(config,
+                                 [self.get_cert(ca_num=2, key_num=1)],
+                                 None)
+
+    def test_verify_existing_key_negative(self, noop_privileges, tmp_path):
+        config = self.get_config()
+        config['verify_subject_cn'] = False
+
+        config['ca_file'] = self.write_ca_file([1], tmp_path)
+        key_path = tmp_path / 'key.pem'
+        key_path.write_text(self.get_key(key_num=2))
+        config['key_path'] = str(key_path)
+
+        for setting, value in cr.CFG_DEFAULT_SETTINGS.items():
+            config.setdefault(setting, value)
+        with pytest.raises(cr.BadCertificateException):
+            cr.perform_verifications(config,
+                                     [self.get_cert(ca_num=1, key_num=3)],
+                                     None)
+
+    def test_verify_existing_chain_negative_wrong(self, noop_privileges, tmp_path):
+        config = self.get_config()
+        config['if_no_intermediate'] = 'preserve'
+        config['verify_subject_cn'] = False
+
+        config['ca_path'] = self.write_ca_directory([2], tmp_path)
+        config['key_path'] = str(tmp_path / 'key.pem')
+        chain_path = tmp_path / 'chain.pem'
+        chain_path.write_text(self.get_cert(ca_num=2, intermediate_num=4))
+        config['intermediate_path'] = str(chain_path)
+
+        for setting, value in cr.CFG_DEFAULT_SETTINGS.items():
+            config.setdefault(setting, value)
+        with pytest.raises(cr.BadCertificateException):
+            cr.perform_verifications(config,
+                                     [self.get_cert(intermediate_num=1, key_num=3)],
+                                     self.get_key(key_num=2))
