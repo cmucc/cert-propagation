@@ -299,6 +299,15 @@ def check_configuration_section(name, section):
 
     return (heading, errors, warnings)
 
+# From RFC 7468
+PEM_LABEL = re.compile(br'(?:[\x21-\x2c\x2e-\x7e]'
+                       br' (?:[\ -]?[\x21-\x2c\x2e-\x7e])*)?$',
+                       re.VERBOSE)
+
+KEY_LABELS = frozenset([b'PRIVATE KEY', b'RSA PRIVATE KEY'])
+CERTIFICATE_LABELS = frozenset([b'CERTIFICATE', b'TRUSTED CERTIFICATE',
+                                b'X.509 CERTIFICATE', b'X509 CERTIFICATE'])
+
 def interact_with_sender(full_config):
     '''
     Processes input from the sender.  Identifies the applicable configuration,
@@ -324,7 +333,7 @@ def interact_with_sender(full_config):
         # We expect the input to be UTF-8, where multibyte characters'
         # encodings never contain bytes from 7-bit ASCII.  Hence it is safe
         # to apply byte regular expressions where all literals are ASCII.
-        sender.expect(br'^([^\n]*?)\r?\n')
+        sender.expect(br'^([^\r\n]*)[\r\n]')
         name = sender.match.group(1).decode()
         if not re.match(r'\w+$', name):
             raise BadSenderException('Aborting, received an invalid '
@@ -346,34 +355,70 @@ def interact_with_sender(full_config):
         certificates = []
         key = None
 
+        adjacent = False
         while True:
             scratch = []
 
-            sender.expect([
-                br'^-----BEGIN ((?:X509 |TRUSTED |)CERTIFICATE)-----\r?\n',
-                br'^-----BEGIN ((?:RSA )?PRIVATE KEY)-----\r?\n',
-                br'^()\r?\n',
+            idx = sender.expect([
+                br'-----BEGIN (?P<label>[^\r\n]*?)-----',
+                br'-----......(?<!BEGIN )',
+                br'^[^\r\n]*[\r\n]',
                 mini_expect.EOF,
             ])
-            if sender.match is mini_expect.EOF:
-                break
-            elif not sender.match.group(1):
+            if adjacent and sender.before.startswith(b'-'):
+                # Prior END delimiter had extra trailing dash(es)
+                raise BadSenderException('Received invalid or non-END '
+                                         'delimiter for PEM data block')
+            if idx == 2 and b'-----' not in sender.match.group(0):
+                # Line that does not look like a PEM delimiter
+                if adjacent and sender.match.group(0).startswith(b'-'):
+                    raise BadSenderException('Received invalid or non-END '
+                                             'delimiter for PEM data block')
+                adjacent = False
                 continue
-            elif sender.match.group(1).endswith(b'PRIVATE KEY') and \
-                 key is not None:
-                raise BadSenderException('Aborting, received more than one '
-                                         'private key')
+            if idx == 3:
+                # EOF
+                break
+            if idx != 0 or sender.before.endswith(b'-') or \
+               not PEM_LABEL.match(sender.match.group('label')):
+                raise BadSenderException('Received invalid or non-BEGIN '
+                                         'delimiter for PEM data block')
+
+            what = sender.match.group('label')
+            if what in KEY_LABELS:
+                if key is not None:
+                    raise BadSenderException('Aborting, received more than '
+                                             'one private key')
+            elif what not in CERTIFICATE_LABELS:
+                raise BadSenderException('Received unrecognized PEM data '
+                                         'block type')
 
             scratch.append(sender.match.group(0))
 
-            end_pattern = r'(?:^|\n)-----END ({})-----\r?\n' \
-                          .format(sender.match.group(1).decode()).encode()
-            sender.expect(end_pattern)
-            scratch.append(sender.before)
-            scratch.append(sender.match.group(0))
-            pem_item = b''.join(scratch).decode().replace('\r', '')
+            idx = sender.expect([
+                br'-----END (?P<label>[^\r\n]*?)-----',
+                br'-----....(?<!END )',
+            ])
+            if sender.before.startswith(b'-'):
+                # BEGIN delimiter had extra trailing dash(es)
+                raise BadSenderException('Received invalid or non-BEGIN '
+                                         'delimiter for PEM data block')
+            if idx != 0 or sender.before.endswith(b'-') or \
+               not PEM_LABEL.match(sender.match.group('label')):
+                raise BadSenderException('Received invalid or non-END '
+                                         'delimiter for PEM data block')
 
-            if sender.match.group(1).endswith(b'PRIVATE KEY'):
+            what2 = sender.match.group('label')
+            if what != what2:
+                raise BadSenderException('Received END delimiter of PEM data '
+                                         'block with the wrong type')
+
+            adjacent = True
+
+            scratch.extend([sender.before, sender.match.group(0), b'\n'])
+            pem_item = ''.join(part.decode() for part in scratch)
+
+            if what.endswith(b'PRIVATE KEY'):
                 key = pem_item
             else:
                 certificates.append(pem_item)
