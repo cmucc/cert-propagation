@@ -10,3 +10,4 @@ __pycache__/
 /debian/cclub-certbot-send/
 /debian/debhelper-build-stamp
 /debian/files
+/wrapper/cert_receive.py
