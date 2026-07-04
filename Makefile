@@ -1,6 +1,17 @@
 PYTHON = python3
 
-all :
+all : wrapper/cert_receive.py
+
+pythonabspath = $(abspath $(shell command -v $(PYTHON)))
+privatepythonstr = $(shell echo -n 'r"/usr/share/cclub-cert-receive"')
+
+wrapper/cert_receive.py : wrapper/cert_receive.py.in
+	sed -e '/^#shebang#$$/{' -e 'i\' \
+	    -e '#! $(pythonabspath)' -e 'd' -e '}' \
+	    -e '/^#path_manipulation#$$/{' -e 'i\' \
+	    -e 'sys.path[0] = $(privatepythonstr)' \
+	    -e 'd' -e '}' $< > $@ || \
+	{ rm -f $@; exit 1; }
 
 check :
 	fakeroot $(PYTHON) -m pytest
@@ -9,6 +20,7 @@ clean :
 	rm -rf build cert_receive.egg-info dist
 	find . -path ./.tox -prune -o \
 	       -name __pycache__ -type d -prune -exec rm -rf {} \;
+	rm -f wrapper/cert_receive.py
 
 distclean : clean
 	rm -rf .tox
