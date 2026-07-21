@@ -1,6 +1,7 @@
 import errno
 import itertools
 import os
+import re
 from unittest.mock import patch
 
 import pytest
@@ -193,3 +194,164 @@ class TestMiniExpectAppendBuffer:
             assert not at_eof
             assert self.is_at_maxbuffer(exp)
             assert exp._buffer.startswith(b'Howdy!\nHowdy!\nHowdy!\nHowdy!\n')
+
+class TestMiniExpectCheckMatchers:
+    @staticmethod
+    def make_matchers(pattern):
+        return [me._Matcher.from_expect_arg(x) for x in pattern]
+
+    def test_regex_1(self):
+        input_bytes = b'Hello, world!\r\n'
+        exp = me.MiniExpect(-1)
+        exp._bstart = 0
+        exp._bend = len(input_bytes)
+        exp._buffer[exp._bstart:exp._bend] = input_bytes
+
+        idx, match = exp._check_matchers(
+                            self.make_matchers([br'^Hello']),
+                            False,
+                            False)
+        assert idx == 0
+        assert isinstance(match, re.Match)
+        assert match.group(0) == b'Hello'
+        assert match.start() == 0
+
+    def test_regex_2(self):
+        input_bytes = b'Hello, world!\n'
+        exp = me.MiniExpect(-1)
+        exp._bstart = len(exp._buffer) - len(input_bytes)
+        exp._bend = len(exp._buffer)
+        exp._buffer[exp._bstart:exp._bend] = input_bytes
+
+        idx, match = exp._check_matchers(
+                            self.make_matchers([br'world']),
+                            False,
+                            False)
+        assert idx == 0
+        assert isinstance(match, re.Match)
+        assert match.group(0) == b'world'
+        assert match.start() == len(b'Hello, ')
+
+    def test_no_match(self):
+        input_bytes = b'Goodnight, moon.\r\n'
+        exp = me.MiniExpect(-1)
+        exp._bstart = 0
+        exp._bend = len(input_bytes)
+        exp._buffer[exp._bstart:exp._bend] = input_bytes
+
+        idx, match = exp._check_matchers(
+                            self.make_matchers([br'(?i)hello', br'(?i)world']),
+                            False,
+                            False)
+        assert idx is None
+        assert match is None
+
+    @pytest.mark.parametrize('eofpattern', ['explicit', 'implicit'])
+    def test_eof(self, eofpattern):
+        exp = me.MiniExpect(-1)
+        pattern = []
+        if eofpattern == 'explicit':
+            pattern.append(me.EOF)
+        else:
+            pattern.append(rb'.')
+
+        idx, match = exp._check_matchers(
+                            self.make_matchers(pattern),
+                            True,
+                            False)
+        if pattern[0] is me.EOF:
+            assert idx == 0
+        else:
+            assert idx is None
+        assert match is me.EOF
+
+    @pytest.mark.parametrize('timeoutpattern', ['explicit', 'implicit'])
+    def test_timeout(self, timeoutpattern):
+        input_bytes = b'Irrelevant!'
+        exp = me.MiniExpect(-1)
+        exp._bstart = 0
+        exp._bend = len(input_bytes)
+        exp._buffer[exp._bstart:exp._bend] = input_bytes
+        pattern = []
+        if timeoutpattern == 'explicit':
+            pattern.append(me.TIMEOUT)
+        else:
+            pattern.append(rb'a penny for your thoughts\?')
+
+        idx, match = exp._check_matchers(
+                            self.make_matchers(pattern),
+                            False,
+                            True)
+        if pattern[0] is me.TIMEOUT:
+            assert idx == 0
+        else:
+            assert idx is None
+        assert match is me.TIMEOUT
+
+    def test_prefer_lowest_regex_start(self):
+        input_bytes = b'abcdef'
+        exp = me.MiniExpect(-1)
+        exp._bstart = int(len(exp._buffer) / 5)
+        exp._bend = exp._bstart + len(input_bytes)
+        assert exp._bend <= len(exp._buffer)
+        exp._buffer[exp._bstart:exp._bend] = input_bytes
+
+        idx, match = exp._check_matchers(
+                            self.make_matchers([br'cdef', br'b', br'def']),
+                            False,
+                            False)
+        assert idx == 1
+        assert isinstance(match, re.Match)
+        assert match.group(0) == b'b'
+        assert match.start() == len(b'a')
+
+    def test_prefer_first_regex_at_lowest_start(self):
+        input_bytes = b'Cool cats at the school\r\n'
+        exp = me.MiniExpect(-1)
+        exp._bstart = 3 * int(len(exp._buffer) / 5)
+        exp._bend = exp._bstart + len(input_bytes)
+        assert exp._bend <= len(exp._buffer)
+        exp._buffer[exp._bstart:exp._bend] = input_bytes
+
+        idx, match = exp._check_matchers(
+                            self.make_matchers([br'.at', br'school', br'ca']),
+                            False,
+                            False)
+        assert idx == 0
+        assert isinstance(match, re.Match)
+        assert match.group(0) == b'cat'
+        assert match.start() == len(b'Cool ')
+
+    @pytest.mark.parametrize(
+        'preference',
+        [
+            pytest.param((re.Match, me.EOF), id='match_over_eof'),
+            pytest.param((re.Match, me.TIMEOUT), id='match_over_timeout'),
+            pytest.param((me.EOF, me.TIMEOUT), id='eof_over_timeout'),
+        ]
+    )
+    def test_matcher_preference(self, preference):
+        pattern = []
+        pattern.append(br'never gonna give a match')
+        if re.Match in preference:
+            pattern.append(br'.')
+        if me.EOF in preference:
+            pattern.append(me.EOF)
+        if me.TIMEOUT in preference:
+            pattern.append(me.TIMEOUT)
+        pattern.reverse()
+
+        input_bytes = b'Sharks!\r\n'
+        exp = me.MiniExpect(-1)
+        exp._bstart = 0
+        exp._bend = len(input_bytes)
+        exp._buffer[exp._bstart:exp._bend] = input_bytes
+
+        idx, match = exp._check_matchers(
+                            self.make_matchers(pattern),
+                            me.EOF in pattern,
+                            me.TIMEOUT in pattern)
+        assert idx is not None
+        assert idx != 0
+        assert idx != len(pattern) - 1
+        assert match is preference[0] or isinstance(match, preference[0])
