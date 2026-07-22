@@ -32,8 +32,9 @@ packages = ["cert_receive"]
 
 [tool.tox]
 requires = ["tox>=4.21.1"]
-env_list = ["py-latest", "py313-debian13", "py311-debian12", "py39-debian11",
-            "virtualenv20_4_7", "py37-debian10", "py35-debian9", "py34-debian8"]
+env_list = ["py314-latest", "py-latest", "py313-debian13",
+            "py311-debian12", "py39-debian11", "virtualenv20_4_7",
+            "py37-debian10", "py35-debian9", "py34-debian8"]
 
 [tool.tox.env_run_base]
 package = "wheel"
@@ -73,6 +74,15 @@ set_env = [
     {CPPFLAGS="-I/opt/openssl-1.0.2u/include"},
     {LDFLAGS="-L/opt/openssl-1.0.2u/lib"},
     {OPENSSL="/opt/openssl-1.0.2u/bin/openssl"},
+]
+
+[tool.tox.env.py314-latest]
+description = """Python 3.14 and the latest version of the \
+                 pyOpenSSL/cryptography packages"""
+deps = [
+    "pytest",
+    "pyOpenSSL",
+    "cryptography",
 ]
 
 [tool.tox.env.py-latest]
