@@ -2,7 +2,7 @@ import errno
 import itertools
 import os
 import re
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import pytest
 
@@ -355,3 +355,146 @@ class TestMiniExpectCheckMatchers:
         assert idx != 0
         assert idx != len(pattern) - 1
         assert match is preference[0] or isinstance(match, preference[0])
+
+@pytest.mark.usefixtures('simulated_input')
+class TestMiniExpectEndToEnd:
+    foreach_delay = pytest.mark.parametrize(
+        'delay',
+        [{}, {'byte_delay': 0.002}, {'line_delay': 0.04}],
+        ids=['no_delay', 'byte_delay', 'line_delay'],
+    )
+
+    foreach_end_of_data = pytest.mark.parametrize(
+        'end_of_data',
+        [{'close_at_end_of_data': True}, {'close_at_end_of_data': False}],
+        ids=['close', 'no_close'],
+    )
+
+    @foreach_delay
+    @foreach_end_of_data
+    def test_basic(self, delay, end_of_data):
+        input_kwargs = {'linesep': '\r\n'}
+        input_kwargs.update(delay)
+        input_kwargs.update(end_of_data)
+        input_lines = ['One', 'Two', 'Three', 'Four']
+        with self.simulated_input(input_lines, **input_kwargs) as fd:
+            exp = me.MiniExpect(fd, timeout=1)
+
+            idx = exp.expect([br'One\r?\n', br'Uno\r?\n'])
+            assert idx == 0
+            assert exp.before == b''
+            assert exp.after == b'One\r\n'
+            assert isinstance(exp.match, re.Match)
+            assert exp.match.group(0) == b'One\r\n'
+
+            idx = exp.expect([br'Tr', br'Thr'])
+            assert idx == 1
+            assert exp.before == b'Two\r\n'
+            assert exp.after == b'Thr'
+            assert isinstance(exp.match, re.Match)
+            assert exp.match.group(0) == b'Thr'
+
+            idx = exp.expect([br'(.*?)\r?\n', me.EOF, me.TIMEOUT])
+            assert idx == 0
+            assert exp.before == b''
+            assert exp.after == b'ee\r\n'
+            assert isinstance(exp.match, re.Match)
+            assert exp.match.group(1) == b'ee'
+
+            idx = exp.expect([me.TIMEOUT, me.EOF, br'Five\r?\n', br'Cinco\r?\n'])
+            if end_of_data['close_at_end_of_data']:
+                assert idx == 1
+                assert exp.match is me.EOF
+            else:
+                assert idx == 0
+                assert exp.match is me.TIMEOUT
+            assert exp.before == b'Four'
+            assert exp.after == b''
+
+    @foreach_delay
+    def test_multiple_lines_required(self, delay):
+        input_kwargs = {'linesep': '\r\n'}
+        input_kwargs.update(delay)
+        input_lines = ['status: good', 'name: mickey', '', '>> ']
+        with self.simulated_input(input_lines, **input_kwargs) as fd:
+            exp = me.MiniExpect(fd, timeout=1)
+            mock_read = Mock(wraps=exp._read)
+
+            with patch.object(exp, '_read', new=mock_read):
+                exp.expect(b'\r?\n>> ')
+
+            assert exp.before == b'status: good\r\nname: mickey\r\n'
+            assert exp.after == b'\r\n>> '
+            assert isinstance(exp.match, re.Match)
+            assert exp.match.group(0) == b'\r\n>> '
+
+            if delay:
+                assert mock_read.call_count > 1
+
+    def test_compile_with_dotall(self):
+        input_lines = ['junk-->Good', '-->evening', 'mister<--', '<--junk', '']
+        with self.simulated_input(input_lines, linesep='\n') as fd:
+            exp = me.MiniExpect(fd, timeout=1)
+
+            exp.expect(br'\n-->(.*\n)<--')
+
+            assert exp.before == b'junk-->Good'
+            assert exp.after == b'\n-->evening\nmister<--\n<--'
+            assert isinstance(exp.match, re.Match)
+            assert exp.match.group(1) == b'evening\nmister<--\n'
+
+    @foreach_end_of_data
+    def test_no_match_exception(self, end_of_data):
+        input_kwargs = {'linesep': '\n'}
+        input_kwargs.update(end_of_data)
+        input_lines = ['Just a haystack.', 'Nothing interesting,', 'only hay.']
+        with self.simulated_input(input_lines, **input_kwargs) as fd:
+            exp = me.MiniExpect(fd, timeout=1)
+            etype = me.EOF if end_of_data['close_at_end_of_data'] else me.TIMEOUT
+
+            with pytest.raises(etype):
+                exp.expect([br'(?i)needle'])
+
+            assert exp.before == '\n'.join(input_lines).encode()
+            assert exp.after == b''
+            assert exp.match is etype
+
+    def test_io_exception(self):
+        input_lines = ['Beep ', 'Boop ', 'Beepboop\r\n']
+        with self.simulated_input(input_lines, linesep='', line_delay=0.3) as fd:
+            exp = me.MiniExpect(fd, timeout=1)
+            real_exp_read = exp._read
+            with patch.object(exp, '_read') as mock_read, \
+                 pytest.raises((OSError, IOError)):
+                call_count = 0
+                def side_effect(rend):
+                    nonlocal call_count
+                    call_count = call_count + 1
+                    if call_count == 1:
+                        return real_exp_read(rend)
+                    else:
+                        raise IOError(errno.EIO, os.strerror(errno.EIO))
+                mock_read.side_effect = side_effect
+                exp.expect(br'\r?\n')
+
+            assert exp.before == b'Beep '
+            assert exp.after == b''
+            assert exp.match is None
+
+    def test_buffer_full(self):
+        input_lines = itertools.cycle(['pony', 'horse'])
+        with self.simulated_input(input_lines, linesep='\r\n') as fd:
+            exp = me.MiniExpect(fd, timeout=1, maxread=100, maxbuffer=1000)
+
+            with pytest.raises(me.BufferFull):
+                try:
+                    exp.expect(br'\r?\nunicorn\r?\n')
+                finally:
+                    try:
+                        exp.close()
+                    except (IOError, OSError) as exc:
+                        if exc.errno != errno.EBADF:
+                            raise
+
+            assert exp.before.startswith(b'pony\r\nhorse\r\npony\r\nhorse\r\n')
+            assert exp.match is None
