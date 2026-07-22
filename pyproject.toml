@@ -1,7 +1,6 @@
 [project]
 name = "cert_receive"
 dependencies = [
-    "pexpect",
     "pyOpenSSL",
 ]
 authors = [
@@ -77,11 +76,10 @@ set_env = [
 ]
 
 [tool.tox.env.py-latest]
-description = """Python used to run tox and the latest version of the pexpect/\
+description = """Python used to run tox and the latest version of the \
                  pyOpenSSL/cryptography packages"""
 deps = [
     "pytest",
-    "pexpect",
     "pyOpenSSL",
     "cryptography",
 ]
@@ -109,31 +107,28 @@ install_command = [
 ]
 
 [tool.tox.env.py313-debian13]
-description = """Python and pexpect/pyOpenSSL/cryptography package versions \
+description = """Python and pyOpenSSL/cryptography package versions \
                  in Debian 13"""
 deps = [
     "pytest",
-    "pexpect==4.9",
     "pyOpenSSL==25.0.0",
     "cryptography==43.0.0",
 ]
 
 [tool.tox.env.py311-debian12]
-description = """Python and pexpect/pyOpenSSL/cryptography package versions \
+description = """Python and pyOpenSSL/cryptography package versions \
                  in Debian 12"""
 deps = [
     "pytest",
-    "pexpect==4.8.0",
     "pyOpenSSL==23.0.0",
     "cryptography==38.0.4",
 ]
 
 [tool.tox.env.py39-debian11]
-description = """Python and pexpect/pyOpenSSL/cryptography package versions \
+description = """Python and pyOpenSSL/cryptography package versions \
                  in Debian 11"""
 deps = [
     "pytest",
-    "pexpect==4.8.0",
     "pyOpenSSL==20.0.1",
     "cryptography==3.3.2",
 ]
@@ -147,14 +142,13 @@ deps = ["virtualenv==20.4.7"]
 commands = []
 
 [tool.tox.env.py37-debian10]
-description = """Python and pexpect/pyOpenSSL/cryptography package versions \
+description = """Python and pyOpenSSL/cryptography package versions \
                  in Debian 10"""
 runner = "external-virtualenv"
 create_with_ext_env = "virtualenv20_4_7"
 deps = [
     "pytest",
     "importlib-metadata",
-    "pexpect==4.6.0",
     "pyOpenSSL==19.0.0",
     "cryptography==2.6.1",
 ]
@@ -166,14 +160,13 @@ install_command = ["python", "-I", "-m", "pip", "install",
                    '\{opts\}', '\{packages\}']
 
 [tool.tox.env.py35-debian9]
-description = """Python and pexpect/pyOpenSSL/cryptography package versions \
+description = """Python and pyOpenSSL/cryptography package versions \
                  in Debian 9"""
 runner = "external-virtualenv"
 create_with_ext_env = "virtualenv20_4_7"
 deps = [
     "pytest",
     "importlib-metadata",
-    "pexpect==4.2.1",
     "pyOpenSSL==16.2.0",
     "cryptography==1.7.1",
 ]
@@ -194,14 +187,13 @@ commands = [
 ]
 
 [tool.tox.env.py34-debian8]
-description = """Python and pexpect/pyOpenSSL/cryptography package versions \
+description = """Python and pyOpenSSL/cryptography package versions \
                  in Debian 8"""
 runner = "external-virtualenv"
 create_with_ext_env = "virtualenv20_4_7"
 deps = [
     "pytest",
     "importlib-metadata",
-    "pexpect==3.2",
     "pyOpenSSL==0.14",
     "cryptography==0.6.1",
 ]

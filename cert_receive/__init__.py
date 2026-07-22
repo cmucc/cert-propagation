@@ -23,8 +23,8 @@ import time
 
 import OpenSSL.SSL as ssl
 import OpenSSL.crypto as ssl_crypto
-import pexpect
-import pexpect.fdpexpect
+
+from . import mini_expect
 
 DEFAULT_CA_PATH = '/etc/ssl/certs'
 DEFAULT_CONFIG_FILE = '/etc/cert_receive.json'
@@ -315,9 +315,10 @@ def interact_with_sender(full_config):
     Raises BadSenderException if the sender does not follow protocol or
     provide the expected data.
     '''
-    sender = pexpect.fdpexpect.fdspawn(os.dup(sys.stdin.fileno()),
-                                       timeout=g_args.receive_timeout,
-                                       maxread=20000)
+    sender = mini_expect.MiniExpect(os.dup(sys.stdin.fileno()),
+                                    timeout=g_args.receive_timeout,
+                                    maxread=10000,
+                                    maxbuffer=20000)
 
     try:
         # We expect the input to be UTF-8, where multibyte characters'
@@ -352,9 +353,9 @@ def interact_with_sender(full_config):
                 br'^-----BEGIN ((?:X509 |TRUSTED |)CERTIFICATE)-----\r?\n',
                 br'^-----BEGIN ((?:RSA )?PRIVATE KEY)-----\r?\n',
                 br'^()\r?\n',
-                pexpect.EOF,
+                mini_expect.EOF,
             ])
-            if sender.match is pexpect.EOF:
+            if sender.match is mini_expect.EOF:
                 break
             elif not sender.match.group(1):
                 continue
@@ -380,10 +381,10 @@ def interact_with_sender(full_config):
     except UnicodeError as exc:
         raise BadSenderException('Aborting, invalid UTF-8 from sender') from exc
 
-    except pexpect.EOF:
+    except mini_expect.EOF:
         raise BadSenderException('Aborting, unexpected EOF reading from sender')
 
-    except pexpect.TIMEOUT:
+    except mini_expect.TIMEOUT:
         raise BadSenderException('Aborting, timed out reading from sender')
 
     finally:
