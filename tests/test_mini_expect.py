@@ -8,6 +8,13 @@ import pytest
 
 import cert_receive.mini_expect as me
 
+# Work around Python versions < 3.7, which do not provide a named class
+# for regular expression match objects.
+if hasattr(re, 'Match'):
+    re_Match = re.Match
+else:
+    re_Match = type(re.search(br'.', b'x'))
+
 @pytest.mark.usefixtures('simulated_input')
 class TestMiniExpectAppendBuffer:
     foreach_read_style = pytest.mark.parametrize(
@@ -212,7 +219,7 @@ class TestMiniExpectCheckMatchers:
                             False,
                             False)
         assert idx == 0
-        assert isinstance(match, re.Match)
+        assert isinstance(match, re_Match)
         assert match.group(0) == b'Hello'
         assert match.start() == 0
 
@@ -228,7 +235,7 @@ class TestMiniExpectCheckMatchers:
                             False,
                             False)
         assert idx == 0
-        assert isinstance(match, re.Match)
+        assert isinstance(match, re_Match)
         assert match.group(0) == b'world'
         assert match.start() == len(b'Hello, ')
 
@@ -301,7 +308,7 @@ class TestMiniExpectCheckMatchers:
                             False,
                             False)
         assert idx == 1
-        assert isinstance(match, re.Match)
+        assert isinstance(match, re_Match)
         assert match.group(0) == b'b'
         assert match.start() == len(b'a')
 
@@ -318,22 +325,22 @@ class TestMiniExpectCheckMatchers:
                             False,
                             False)
         assert idx == 0
-        assert isinstance(match, re.Match)
+        assert isinstance(match, re_Match)
         assert match.group(0) == b'cat'
         assert match.start() == len(b'Cool ')
 
     @pytest.mark.parametrize(
         'preference',
         [
-            pytest.param((re.Match, me.EOF), id='match_over_eof'),
-            pytest.param((re.Match, me.TIMEOUT), id='match_over_timeout'),
+            pytest.param((re_Match, me.EOF), id='match_over_eof'),
+            pytest.param((re_Match, me.TIMEOUT), id='match_over_timeout'),
             pytest.param((me.EOF, me.TIMEOUT), id='eof_over_timeout'),
         ]
     )
     def test_matcher_preference(self, preference):
         pattern = []
         pattern.append(br'never gonna give a match')
-        if re.Match in preference:
+        if re_Match in preference:
             pattern.append(br'.')
         if me.EOF in preference:
             pattern.append(me.EOF)
@@ -384,21 +391,21 @@ class TestMiniExpectEndToEnd:
             assert idx == 0
             assert exp.before == b''
             assert exp.after == b'One\r\n'
-            assert isinstance(exp.match, re.Match)
+            assert isinstance(exp.match, re_Match)
             assert exp.match.group(0) == b'One\r\n'
 
             idx = exp.expect([br'Tr', br'Thr'])
             assert idx == 1
             assert exp.before == b'Two\r\n'
             assert exp.after == b'Thr'
-            assert isinstance(exp.match, re.Match)
+            assert isinstance(exp.match, re_Match)
             assert exp.match.group(0) == b'Thr'
 
             idx = exp.expect([br'(.*?)\r?\n', me.EOF, me.TIMEOUT])
             assert idx == 0
             assert exp.before == b''
             assert exp.after == b'ee\r\n'
-            assert isinstance(exp.match, re.Match)
+            assert isinstance(exp.match, re_Match)
             assert exp.match.group(1) == b'ee'
 
             idx = exp.expect([me.TIMEOUT, me.EOF, br'Five\r?\n', br'Cinco\r?\n'])
@@ -425,7 +432,7 @@ class TestMiniExpectEndToEnd:
 
             assert exp.before == b'status: good\r\nname: mickey\r\n'
             assert exp.after == b'\r\n>> '
-            assert isinstance(exp.match, re.Match)
+            assert isinstance(exp.match, re_Match)
             assert exp.match.group(0) == b'\r\n>> '
 
             if delay:
@@ -440,7 +447,7 @@ class TestMiniExpectEndToEnd:
 
             assert exp.before == b'junk-->Good'
             assert exp.after == b'\n-->evening\nmister<--\n<--'
-            assert isinstance(exp.match, re.Match)
+            assert isinstance(exp.match, re_Match)
             assert exp.match.group(1) == b'evening\nmister<--\n'
 
     @foreach_end_of_data

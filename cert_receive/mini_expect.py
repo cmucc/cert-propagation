@@ -17,6 +17,16 @@ import select
 import time
 
 
+# Work around Python versions < 3.7, which do not provide named classes
+# for regular expression match and pattern objects.
+if hasattr(re, 'Match'):
+    re_Match = re.Match
+    re_Pattern = re.Pattern
+else:
+    re_Match = type(re.search(br'.', b'x'))
+    re_Pattern = type(re.compile(br'.'))
+
+
 class MiniExpectException(Exception):
     pass
 
@@ -38,7 +48,7 @@ class _Matcher:
         if expect_arg is TIMEOUT:
             return _TimeoutMatcher()
         pattern_text = expect_arg
-        if isinstance(expect_arg, re.Pattern):
+        if isinstance(expect_arg, re_Pattern):
             pattern_text = expect_arg.pattern
         if not isinstance(pattern_text, (bytes, bytearray, memoryview)):
             raise TypeError('regular expression patterns must be bytes-based')
@@ -61,7 +71,7 @@ class _TimeoutMatcher(_Matcher):
 
 class _RegexMatcher(_Matcher):
     def __init__(self, pattern):
-        if not isinstance(pattern, re.Pattern):
+        if not isinstance(pattern, re_Pattern):
             pattern = re.compile(pattern, re.DOTALL)
         self.pattern = pattern
 
@@ -120,7 +130,7 @@ class MiniExpect:
         self._release_views()
         self.match = match
         with memoryview(self._buffer) as bufferview:
-            if isinstance(match, re.Match):
+            if isinstance(match, re_Match):
                 mstart = self._bstart + match.start()
                 mend = self._bstart + match.end()
                 self._before = bufferview[self._bstart:mstart]
@@ -218,7 +228,7 @@ class MiniExpect:
                 best_idx, best_match, _ = min(matches,
                                               key=lambda x: x[2],
                                               default=(None,) * 3)
-                if isinstance(best_match, re.Match):
+                if isinstance(best_match, re_Match):
                     # re-calculate the Match object with a copy of the
                     # relevant bytes from searchview
                     with searchview[0:best_match.end()] as matchview:
@@ -292,7 +302,7 @@ class MiniExpect:
             timeout = self.timeout
 
         try:
-            if isinstance(pattern, (bytes, bytearray, memoryview, re.Pattern)):
+            if isinstance(pattern, (bytes, bytearray, memoryview, re_Pattern)):
                 pattern = [pattern]
             pattern = [_Matcher.from_expect_arg(x) for x in pattern]
 
