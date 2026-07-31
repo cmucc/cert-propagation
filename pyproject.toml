@@ -32,7 +32,8 @@ packages = ["cert_receive"]
 
 [tool.tox]
 requires = ["tox>=4.21.1"]
-env_list = ["py314-latest", "py-latest", "py313-debian13",
+env_list = ["py313-pylint-debian13",
+            "py314-latest", "py-latest", "py313-debian13",
             "py311-debian12", "py39-debian11", "virtualenv20_4_7",
             "py37-debian10", "py35-debian9", "py34-debian8"]
 
@@ -52,6 +53,12 @@ set_env = [
 ]
 commands = [
     ["pytest", "tests", {replace="posargs", extend=true}],
+]
+
+[tool.tox.base_pylint]
+commands = [
+    ["python", "-P", "-m", "pylint", "cert_receive"],
+    ["/bin/sh", "-c", "python -P -m pylint --rcfile tests/pylintrc.toml tests/*.py"],
 ]
 
 # NB: the OpenSSL version used is based on the OpenSSL major version the
@@ -215,3 +222,24 @@ install_command = ["/bin/sh", "tox_helpers/patch_packages.sh",
                    "{env_dir}", "cryptography-0.6.1.diff", "--", '\{opts\}',
                    "--no-binary=cryptography", "--no-binary=pyOpenSSL", "--",
                    '\{packages\}']
+
+[tool.tox.env.pylint-system]
+description = """Run pylint against cert_receive and its tests using \
+                 the default system python and only packages from its \
+                 system site-packages directories"""
+base_python = ["/usr/bin/python3"]
+system_site_packages = true
+commands = {replace="ref", of=["tool", "tox", "base_pylint", "commands"]}
+allowlist_externals = ["/bin/sh"]
+install_command = {replace="ref", of=["tool", "tox", "env", "system", "install_command"]}
+
+[tool.tox.env.py313-pylint-debian13]
+description = """Run pylint against cert_receive and its tests using \
+                 the python and pylint/pyOpenSSL/cryptography package \
+                 versions in Debian 13"""
+deps = [
+    "pylint==3.3.4",
+    {replace="ref", of=["tool", "tox", "env", "py313-debian13", "deps"], extend=true},
+]
+commands = {replace="ref", of=["tool", "tox", "base_pylint", "commands"]}
+allowlist_externals = ["/bin/sh"]
