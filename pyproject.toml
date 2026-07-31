@@ -32,7 +32,7 @@ packages = ["cert_receive"]
 
 [tool.tox]
 requires = ["tox>=4.21.1"]
-env_list = ["py313-pylint-debian13",
+env_list = ["py-pylint-latest", "py313-pylint-debian13",
             "py314-latest", "py-latest", "py313-debian13",
             "py311-debian12", "py39-debian11", "virtualenv20_4_7",
             "py37-debian10", "py35-debian9", "py34-debian8"]
@@ -222,6 +222,17 @@ install_command = ["/bin/sh", "tox_helpers/patch_packages.sh",
                    "{env_dir}", "cryptography-0.6.1.diff", "--", '\{opts\}',
                    "--no-binary=cryptography", "--no-binary=pyOpenSSL", "--",
                    '\{packages\}']
+
+[tool.tox.env.py-pylint-latest]
+description = """Run pylint against cert_receive and its tests using \
+                 the Python running tox and the latest version of the \
+                 pylint/pyOpenSSL/cryptography packages"""
+deps = [
+    "pylint",
+    {replace="ref", of=["tool", "tox", "env", "py-latest", "deps"], extend=true},
+]
+commands = {replace="ref", of=["tool", "tox", "base_pylint", "commands"]}
+allowlist_externals = ["/bin/sh"]
 
 [tool.tox.env.pylint-system]
 description = """Run pylint against cert_receive and its tests using \

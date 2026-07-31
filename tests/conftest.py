@@ -91,6 +91,7 @@ def certificate_helper_per_session():
 
         @classmethod
         def _make_cert_ssl_crypto(cls, params):
+            #pylint: disable=useless-suppression disable=no-member
             is_ca = ('CA:TRUE' if params.is_ca else 'CA:FALSE').encode()
             cert = ssl_crypto.X509()
             cert.set_version(2) # the value 2 represents version 3
