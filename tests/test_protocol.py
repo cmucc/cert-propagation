@@ -325,6 +325,7 @@ class TestProtocolPemProcessing:
             '-----BEGIN CERTIFICATE-----',
             'the certificate',
         ]
+        match = None
         if what == 'certificate':
             match = r'\bno[nt]?\b.*\bEND\b.*\bPEM\b'
         else:

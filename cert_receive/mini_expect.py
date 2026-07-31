@@ -146,6 +146,7 @@ class MiniExpect:
             return 0
         with memoryview(self._buffer) as bufferview, \
              bufferview[self._bend:rend] as readdest:
+            #pylint: disable=useless-suppression disable=no-member
             return os.readinto(self.fileno, readdest)
 
     def _read_read(self, rend):
