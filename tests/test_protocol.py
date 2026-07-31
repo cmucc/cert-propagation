@@ -16,10 +16,14 @@
 # with cert-propagation. If not, see <https://www.gnu.org/licenses/>.
 
 import re
+import sys
 
 import pytest
 
 import cert_receive as cr
+
+pytestmark = pytest.mark.usefixtures('noop_config_check', 'simulated_stdin')
+
 
 foreach_linesep = pytest.mark.parametrize(
     'linesep',
@@ -39,8 +43,7 @@ foreach_end_of_data = pytest.mark.parametrize(
     ids=['close', 'no_close'],
 )
 
-@pytest.mark.usefixtures('noop_config_check', 'short_receive_timeout',
-                         'simulated_stdin')
+@pytest.mark.usefixtures('short_receive_timeout')
 class TestProtocolBasic:
     @foreach_delay
     @foreach_linesep
@@ -180,8 +183,8 @@ class TestProtocolBasic:
              pytest.raises(cr.BadSenderException, match=match):
             cr.interact_with_sender(full_config)
 
-@pytest.mark.usefixtures('noop_config_check', 'short_receive_timeout',
-                         'simulated_stdin')
+
+@pytest.mark.usefixtures('short_receive_timeout')
 class TestProtocolPemProcessing:
     '''
     Test cases verifying that several variations on the PEM format can be
@@ -469,3 +472,301 @@ class TestProtocolPemProcessing:
              pytest.raises(cr.BadSenderException,
                            match=r'\binvalid\b.*\bBEGIN\b.*\bdelimiter\b'):
             cr.interact_with_sender(full_config)
+
+
+# For the data maximum tests, we use adaptive delays, where we begin with
+# delays between lines or larger chunks of data and then switch to delays
+# between every byte as we approach the data maximums.
+foreach_delay = pytest.mark.parametrize(
+    'delay',
+    [{}, {'line_delay': 0.002}],
+    ids=['no_delay', 'adaptive_delay'],
+)
+
+@pytest.mark.usefixtures('mock_g_args')
+class TestProtocolDataMaximums:
+    '''
+    Test cases verifying that cr.interact_with_sender properly applies
+    data limits to input provided by the sender.
+    '''
+    @staticmethod
+    def adaptive_character_generator(total, terminator='', chunksize=100):
+        # The following ensure we always generate at least a chunk worth
+        # of non-terminator characters with byte delays.
+        adaptive_threshold = 2 * chunksize
+        assert chunksize > len(terminator)
+
+        while total > adaptive_threshold:
+            total = total - chunksize
+            yield 'y' * chunksize
+
+        while total > len(terminator):
+            total = total - 1
+            yield 'z'
+
+        if terminator:
+            yield from terminator
+
+    @staticmethod
+    def line_generator(total, linesep, linelength=1000):
+        # The following ensures we can always generate a line with at least
+        # one non-separator character.
+        assert linelength > 2 + len(linesep)
+
+        while total > 0:
+            if total > linelength + len(linesep):
+                line = ('0' * (linelength - len(linesep))) + linesep
+            elif total > linelength:
+                line = ('1' * (linelength - 2 - len(linesep))) + linesep
+            else:
+                line = ('2' * (total - len(linesep))) + linesep
+            total = total - len(line)
+            yield line
+
+    @classmethod
+    def block_generator(cls, what, total, linesep, adaptive_delay=False):
+        begin_line = '-----BEGIN {}-----{}'.format(what, linesep)
+        total = total - len(begin_line)
+
+        end_line = '-----END {}-----{}'.format(what, linesep)
+        # cr.interact_with_sender() does not match the final linesep of
+        # PEM blocks and always appends a '\n'; adjust space consumption
+        # accordingly.
+        total = total - len(end_line) + len(linesep) - 1
+
+        assert total > 0
+        linelength = 1000
+        data = cls.line_generator(total, linesep, linelength=linelength)
+
+        if not adaptive_delay:
+            yield begin_line
+            yield from data
+            yield end_line
+            return
+
+        assert linelength + len(end_line) >= 100
+        prev_line = begin_line
+        for line in data:
+            if len(line) + len(end_line) >= 100:
+                # There are at least 100 bytes in the current data line
+                # and the END line; we don't need to emit anything from
+                # the previous data line with byte delays.
+                yield prev_line
+            else:
+                # There are fewer than 100 bytes in the current data line
+                # (which therefore must be the last data line) and the END
+                # line; emit up to 100 bytes from the previous data line
+                # with byte delays.
+                needed = 100 - len(end_line)
+                yield prev_line[:-needed]
+                yield from prev_line[-needed:]
+                yield from line
+                break
+            prev_line = line
+        else:
+            if len(prev_line) + len(end_line) > 200:
+                # There are more than 200 bytes in the last data line and the
+                # END line.  Only emit the last 200 bytes with byte delays.
+                needed = 200 - len(end_line)
+                yield prev_line[:-needed]
+                yield from prev_line[-needed:]
+            else:
+                # There are no more than 200 bytes in the last data line and
+                # the END line.  Emit everything with byte delays.
+                yield prev_line
+        yield from end_line
+
+    @foreach_delay
+    @pytest.mark.parametrize('data_length', ['max', 'excess'])
+    def test_configuration_name(self, data_length, delay):
+        realsep = '\n'
+        allowed_bytes = cr.PEM_BLOCK_MAXIMUM
+        if data_length == 'max':
+            expect_match = r'\bnot?\b.*\bcertificates?\b'
+            data_length = allowed_bytes
+        else:
+            expect_match = r'\bexcess\s+data\b'
+            data_length = allowed_bytes + 1
+        data = lambda: self.adaptive_character_generator(data_length,
+                                                         terminator=realsep)
+
+        full_config = {''.join(data())[:-1]: {}}
+        with self.simulated_stdin(data(), linesep='', **delay), \
+             pytest.raises(cr.BadSenderException, match=expect_match):
+            cr.interact_with_sender(full_config)
+
+    @foreach_delay
+    @pytest.mark.parametrize('data_length', ['max', 'excess'])
+    def test_additional_line_length(self, data_length, delay):
+        realsep = '\r\n'
+        # For crlf line separators, the cr by itself is also a valid line
+        # separator.  Hence we can handle additional lines up to a length
+        # where the line separator begins within the maximum number of
+        # bytes.
+        allowed_bytes = cr.PEM_BLOCK_MAXIMUM - 1 + len(realsep)
+        if data_length == 'max':
+            expect_exc = False
+            data = self.adaptive_character_generator(allowed_bytes,
+                                                     terminator=realsep)
+        else:
+            expect_exc = True
+            data = self.adaptive_character_generator(allowed_bytes + 1,
+                                                     terminator=realsep)
+
+        full_config = {'verbosely': {}}
+        lines = ['verbosely' + realsep]
+        lines.extend([
+            '-----BEGIN CERTIFICATE-----' + realsep,
+            'qwer' + realsep,
+            '-----END CERTIFICATE-----' + realsep,
+        ])
+        lines.extend(data)
+        lines.extend([
+            '-----BEGIN PRIVATE KEY-----' + realsep,
+            'asdf' + realsep,
+            '-----END PRIVATE KEY-----' + realsep,
+        ])
+
+        with self.simulated_stdin(lines, linesep='', **delay):
+            if expect_exc:
+                with pytest.raises(cr.BadSenderException,
+                                   match=r'\bexcess\s+data\b'):
+                    cr.interact_with_sender(full_config)
+                return
+
+            section, certs, key = cr.interact_with_sender(full_config)
+
+        assert section is full_config['verbosely']
+        assert len(certs) == 1
+        assert key is not None
+
+    @foreach_delay
+    @pytest.mark.parametrize(
+        # Since cr.interact_with_sender uses an expect pattern to match
+        # a singular additional line, expect only needs to buffer a
+        # single additional line at a time.  Thus, we can handle an
+        # arbitrary number of bytes in additional lines, as long as none
+        # of the lines individually exceed cr.PEM_BLOCK_MAXIMUM.
+        'data_length',
+        [7001, cr.PEM_BLOCK_MAXIMUM + 2, cr.OVERALL_PEM_MAXIMUM + 7],
+    )
+    def test_additional_lines(self, data_length, delay):
+        realsep = '\r'
+        line_length = 1000
+        if not delay:
+            by_line_length = data_length
+            adaptive_length = 0
+        else:
+            by_line_length = int((data_length - int(line_length / 2)) / line_length) * line_length
+            assert by_line_length >= line_length
+            adaptive_length = data_length - by_line_length
+            assert adaptive_length >= int(line_length / 2)
+        print("data_length={}, by_line_length={}, adaptive_length={}"
+              .format(data_length, by_line_length, adaptive_length),
+              file=sys.stderr)
+
+        full_config = {'poetry': {}}
+        lines = ['poetry' + realsep]
+        lines.extend(self.line_generator(by_line_length, linesep=realsep, linelength=line_length))
+        if adaptive_length:
+            lines.extend(self.adaptive_character_generator(adaptive_length, terminator=realsep))
+        lines.extend([
+            '-----BEGIN X.509 CERTIFICATE-----' + realsep,
+            'Finally something I can do something with!' + realsep,
+            '-----END X.509 CERTIFICATE-----' + realsep,
+        ])
+        print("chunks={}".format(len(lines)), file=sys.stderr)
+
+        with self.simulated_stdin(lines, linesep='', **delay):
+            section, certs, key = cr.interact_with_sender(full_config)
+
+        assert section is full_config['poetry']
+        assert len(certs) == 1
+        assert key is None
+
+    @foreach_delay
+    @pytest.mark.parametrize(
+        # Since the BEGIN line and the remainder of a PEM block are
+        # matched by separate expect calls, it's possible to process a
+        # slightly oversize PEM block without hitting a BufferFull
+        # condition.  Hence we perform two tests with blocks larger than
+        # the maximum:  one with a block that is only a byte too large,
+        # and one that's significantly too large.  The first verifies
+        # explicit oversize block rejection in cr.interact_with_sender(),
+        # while the latter verifies expect will not allow its buffer to
+        # grow too large.
+        'data_length',
+        [
+            (cr.PEM_BLOCK_MAXIMUM,        r'\bnot?\b.*\bcertificates?\b'),
+            (cr.PEM_BLOCK_MAXIMUM + 1,    r'\bPEM\s+data\s+block\b.*\bmaximum\b'),
+            (cr.PEM_BLOCK_MAXIMUM + 180,  r'\b\bexcess\s+data\b'),
+        ],
+        ids=['max', 'plus_1', 'plus_180'],
+    )
+    def test_pem_block(self, data_length, delay):
+        realsep = '\n'
+        data_length, expect_match = data_length
+
+        full_config = {'duplo': {}}
+        lines = ['duplo' + realsep]
+        lines.extend(self.block_generator('PRIVATE KEY',
+                                          data_length,
+                                          linesep=realsep,
+                                          adaptive_delay=bool(delay)))
+        print("chunks={}".format(len(lines)), file=sys.stderr)
+
+        with self.simulated_stdin(lines, linesep='', **delay), \
+             pytest.raises(cr.BadSenderException, match=expect_match):
+            cr.interact_with_sender(full_config)
+
+    @pytest.mark.parametrize('data_length', ['max', 'excess_begin', 'excess_end'])
+    def test_overall_pem(self, data_length):
+        realsep = '\r\n'
+        allowed_bytes = cr.OVERALL_PEM_MAXIMUM
+        if data_length == 'max':
+            expect_exc = False
+            target_length = allowed_bytes
+        else:
+            expect_exc = True
+            if data_length.endswith('_begin'):
+                target_length = allowed_bytes
+            else:
+                target_length = allowed_bytes + 1
+
+        full_config = {'gigantic': {}}
+        lines = ['gigantic' + realsep]
+
+        key_length = 12000
+        assert key_length <= cr.PEM_BLOCK_MAXIMUM
+        lines.extend(self.block_generator('PRIVATE KEY',
+                                          key_length,
+                                          linesep=realsep))
+        target_length = target_length - key_length
+
+        cert_count = 0
+        cert_length = 5000
+        assert cert_length <= cr.PEM_BLOCK_MAXIMUM
+        while target_length > 0:
+            lines.extend(self.block_generator('CERTIFICATE',
+                                              min(cert_length, target_length),
+                                              linesep=realsep))
+            cert_count = cert_count + 1
+            target_length = target_length - cert_length
+        if data_length == 'excess_begin':
+            lines.extend(self.block_generator('CERTIFICATE',
+                                              cert_length,
+                                              linesep=realsep))
+            cert_count = cert_count + 1
+
+        with self.simulated_stdin(lines, linesep=''):
+            if expect_exc:
+                with pytest.raises(cr.BadSenderException,
+                                   match=r'\b[Oo]verall\s+PEM\b.*\bmaximum\b'):
+                    cr.interact_with_sender(full_config)
+                return
+
+            section, certs, key = cr.interact_with_sender(full_config)
+
+        assert section is full_config['gigantic']
+        assert len(certs) == cert_count
+        assert key is not None

@@ -308,6 +308,9 @@ KEY_LABELS = frozenset([b'PRIVATE KEY', b'RSA PRIVATE KEY'])
 CERTIFICATE_LABELS = frozenset([b'CERTIFICATE', b'TRUSTED CERTIFICATE',
                                 b'X.509 CERTIFICATE', b'X509 CERTIFICATE'])
 
+PEM_BLOCK_MAXIMUM = 20000
+OVERALL_PEM_MAXIMUM = 200000
+
 def interact_with_sender(full_config):
     '''
     Processes input from the sender.  Identifies the applicable configuration,
@@ -326,8 +329,8 @@ def interact_with_sender(full_config):
     '''
     sender = mini_expect.MiniExpect(os.dup(sys.stdin.fileno()),
                                     timeout=g_args.receive_timeout,
-                                    maxread=10000,
-                                    maxbuffer=20000)
+                                    maxread=int(PEM_BLOCK_MAXIMUM / 4),
+                                    maxbuffer=PEM_BLOCK_MAXIMUM)
 
     try:
         # We expect the input to be UTF-8, where multibyte characters'
@@ -352,6 +355,7 @@ def interact_with_sender(full_config):
         if warnings:
             print('\n'.join([header] + warnings), file=sys.stderr)
 
+        total_bytes = 0
         certificates = []
         key = None
 
@@ -393,6 +397,10 @@ def interact_with_sender(full_config):
                 raise BadSenderException('Received unrecognized PEM data '
                                          'block type')
 
+            block_bytes = sender.match.end() - sender.match.start()
+            if total_bytes + block_bytes > OVERALL_PEM_MAXIMUM:
+                raise BadSenderException('Overall PEM data exceeds the '
+                                         'maximum allowable length')
             scratch.append(sender.match.group(0))
 
             idx = sender.expect([
@@ -415,6 +423,16 @@ def interact_with_sender(full_config):
 
             adjacent = True
 
+            block_bytes = (block_bytes + len(sender.before) +
+                           sender.match.end() - sender.match.start() + 1)
+            total_bytes = total_bytes + block_bytes
+            if block_bytes > PEM_BLOCK_MAXIMUM:
+                raise BadSenderException('PEM data block exceeds the '
+                                         'maximum allowable length')
+            if total_bytes > OVERALL_PEM_MAXIMUM:
+                raise BadSenderException('Overall PEM data exceeds the '
+                                         'maximum allowable length')
+
             scratch.extend([sender.before, sender.match.group(0), b'\n'])
             pem_item = ''.join(part.decode() for part in scratch)
 
@@ -431,6 +449,9 @@ def interact_with_sender(full_config):
 
     except mini_expect.TIMEOUT:
         raise BadSenderException('Aborting, timed out reading from sender')
+
+    except mini_expect.BufferFull as exc:
+        raise BadSenderException('Aborting, received excess data from sender') from exc
 
     finally:
         sender.close()
