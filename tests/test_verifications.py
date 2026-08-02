@@ -172,17 +172,22 @@ class TestVerifications:
                                               self.get_cert_object(ca_num=2, key_num=1),
                                               self.get_key_object(key_num=2))
 
+    # We intentionally test both internal implementations of
+    # cr.verify_certificate_issued_by_trusted_ca, so that we always
+    # test the fallback that works when when the system has an old
+    # pyOpenSSL module.
     foreach_verifier = pytest.mark.parametrize(
         'verifier',
         [
-            pytest.param(cr._verify_trust_python,
+            pytest.param(cr._verify_trust_python, #pylint: disable=protected-access
                          id='python',
                          marks=pytest.mark.skipif(
                              not hasattr(ssl_crypto.X509Store, 'load_locations'),
                              reason=('the available pyOpenSSL module does not '
                                      'allow CA store configuration'))),
             pytest.param(lambda config, cert_objects:
-                             cr._verify_trust_openssl_subprocess(
+                         #pylint: disable-next=protected-access
+                         cr._verify_trust_openssl_subprocess(
                                  config,
                                  [ssl_crypto.dump_certificate(
                                       ssl_crypto.FILETYPE_PEM,
@@ -331,7 +336,8 @@ class TestVerifications:
                                      [self.get_cert(key_num=1)],
                                      'Could this unlock anything?\n')
 
-    def test_verify_existing_key_and_intermediates(self, noop_privileges, tmp_path):
+    @pytest.mark.usefixtures('noop_privileges')
+    def test_verify_existing_key_and_intermediates(self, tmp_path):
         config = self.get_config()
         config['if_no_intermediate'] = 'preserve'
         config['verify_subject_cn'] = False
@@ -350,8 +356,9 @@ class TestVerifications:
                                  [self.get_cert(intermediate_num=2, key_num=4)],
                                  None)
 
+    @pytest.mark.usefixtures('noop_privileges')
     @pytest.mark.parametrize('nil_type', ['empty', 'missing'])
-    def test_verify_existing_key_and_nil_intermediates(self, nil_type, noop_privileges, tmp_path):
+    def test_verify_existing_key_and_nil_intermediates(self, nil_type, tmp_path):
         config = self.get_config()
         config['if_no_intermediate'] = 'preserve'
         config['verify_subject_cn'] = False
@@ -371,7 +378,8 @@ class TestVerifications:
                                  [self.get_cert(ca_num=2, key_num=1)],
                                  None)
 
-    def test_verify_existing_key_negative(self, noop_privileges, tmp_path):
+    @pytest.mark.usefixtures('noop_privileges')
+    def test_verify_existing_key_negative(self, tmp_path):
         config = self.get_config()
         config['verify_subject_cn'] = False
 
@@ -387,7 +395,8 @@ class TestVerifications:
                                      [self.get_cert(ca_num=1, key_num=3)],
                                      None)
 
-    def test_verify_existing_chain_negative_wrong(self, noop_privileges, tmp_path):
+    @pytest.mark.usefixtures('noop_privileges')
+    def test_verify_existing_chain_negative_wrong(self, tmp_path):
         config = self.get_config()
         config['if_no_intermediate'] = 'preserve'
         config['verify_subject_cn'] = False

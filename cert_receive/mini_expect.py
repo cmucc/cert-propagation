@@ -36,10 +36,9 @@ import time
 
 # Work around Python versions < 3.7, which do not provide named classes
 # for regular expression match and pattern objects.
-if hasattr(re, 'Match'):
-    re_Match = re.Match
-    re_Pattern = re.Pattern
-else:
+try:
+    re_Match, re_Pattern = re.Match, re.Pattern #pylint: disable=invalid-name
+except AttributeError:
     re_Match = type(re.search(br'.', b'x'))
     re_Pattern = type(re.compile(br'.'))
 
@@ -163,7 +162,8 @@ class MiniExpect:
             return 0
         with memoryview(self._buffer) as bufferview, \
              bufferview[self._bend:rend] as readdest:
-            #pylint: disable=useless-suppression disable=no-member
+            #pylint: disable=useless-suppression,no-member; python < 3.14 does
+            #        not have os.readinto, but will call _read_read instead
             return os.readinto(self.fileno, readdest)
 
     def _read_read(self, rend):

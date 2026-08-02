@@ -25,11 +25,14 @@ import pytest
 
 import cert_receive.mini_expect as me
 
+#pylint: disable=protected-access; these are white box tests, so we
+#        intentionally test and examine some of MiniExpect's protected members
+
 # Work around Python versions < 3.7, which do not provide a named class
 # for regular expression match objects.
-if hasattr(re, 'Match'):
-    re_Match = re.Match
-else:
+try:
+    re_Match = re.Match #pylint: disable=invalid-name
+except AttributeError:
     re_Match = type(re.search(br'.', b'x'))
 
 @pytest.mark.usefixtures('simulated_input')
@@ -496,8 +499,7 @@ class TestMiniExpectEndToEnd:
                     call_count = call_count + 1
                     if call_count == 1:
                         return real_exp_read(rend)
-                    else:
-                        raise IOError(errno.EIO, os.strerror(errno.EIO))
+                    raise IOError(errno.EIO, os.strerror(errno.EIO))
                 mock_read.side_effect = side_effect
                 exp.expect(br'\r?\n')
 

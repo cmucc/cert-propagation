@@ -17,7 +17,6 @@
 
 import grp
 import os
-from pathlib import Path
 import pwd
 import stat
 import sys
@@ -220,7 +219,7 @@ class TestInstallation:
         backup = path.with_name(path.name + '.old')
         old_data = 'Junk'
         data = 'Refreshed Junk'
-        with open(str(path), 'wt') as fd:
+        with open(str(path), 'wt', encoding='utf-8') as fd:
             os.chmod(fd.fileno(), 0o604)
             fd.write(old_data)
             fd.flush()
@@ -241,7 +240,7 @@ class TestInstallation:
         backup = path.with_name(path.name + '.1')
         old_data = 'Old, old, old'
         data = 'Up to date'
-        with open(str(path), 'wt') as fd:
+        with open(str(path), 'wt', encoding='utf-8') as fd:
             os.chown(fd.fileno(), 1711, 91)
             fd.write(old_data)
         result = cr.backup_one_file(str(path), data, str(backup))

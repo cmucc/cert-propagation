@@ -75,7 +75,8 @@ class BadKeyException(CertReceivePyException):
 class UpdateFailedException(CertReceivePyException):
     EXITCODE = 6
 
-g_args = None
+g_args = None #pylint: disable=useless-suppression,invalid-name; this is a
+              #        global variable, but pylint thinks it's a constant
 
 def resolve_user_name(user_name):
     '''
@@ -130,8 +131,8 @@ def drop_privileges():
     if g_args.set_effective_user is not None:
         try:
             os.seteuid(resolve_user_name(g_args.set_effective_user))
-        except OSError:
-            raise BadConfigException('Error dropping privileges')
+        except OSError as e:
+            raise BadConfigException('Error dropping privileges') from e
 
 def reacquire_privileges():
     '''
@@ -153,7 +154,8 @@ def load_configuration(config_in):
     except (IOError, json.JSONDecodeError) as e:
         action = 'parsing' if isinstance(e, json.JSONDecodeError) else 'reading'
         raise BadConfigException('Error {} configuration file "{}":\n{}'
-                                 .format(action, config_file_name, str(e)))
+                                 .format(action, config_file_name, str(e))) \
+              from e
 
     if not isinstance(config, dict):
         raise BadConfigException('Top-level configuration should be a '
@@ -496,17 +498,17 @@ def interact_with_sender(full_config):
             else:
                 certificates.append(pem_item)
 
-    except UnicodeError as exc:
-        raise BadSenderException('Aborting, invalid UTF-8 from sender') from exc
+    except UnicodeError as e:
+        raise BadSenderException('Aborting, invalid UTF-8 from sender') from e
 
-    except mini_expect.EOF:
-        raise BadSenderException('Aborting, unexpected EOF reading from sender')
+    except mini_expect.EOF as e:
+        raise BadSenderException('Aborting, unexpected EOF reading from sender') from e
 
-    except mini_expect.TIMEOUT:
-        raise BadSenderException('Aborting, timed out reading from sender')
+    except mini_expect.TIMEOUT as e:
+        raise BadSenderException('Aborting, timed out reading from sender') from e
 
-    except mini_expect.BufferFull as exc:
-        raise BadSenderException('Aborting, received excess data from sender') from exc
+    except mini_expect.BufferFull as e:
+        raise BadSenderException('Aborting, received excess data from sender') from e
 
     finally:
         sender.close()
@@ -574,6 +576,8 @@ def read_from_file(file_name, max_size=OVERALL_PEM_MAXIMUM):
     reacquire_privileges()
 
     try:
+        #pylint: disable=consider-using-with; try/finally is less awkward,
+        #        given the goal to drop privileges immediately after the open
         fd = open(file_name, 'rt')
     finally:
         drop_privileges()
@@ -612,7 +616,7 @@ def read_key_from_file(key_file_name):
         data = read_from_file(key_file_name, max_size=PEM_BLOCK_MAXIMUM)
     except OSError as e:
         etype = BadKeyException if e.errno == errno.EFBIG else BadConfigException
-        raise etype('Error reading key file:\n' + str(e))
+        raise etype('Error reading key file:\n' + str(e)) from e
 
     match = re.search(r'^-----BEGIN ((?:RSA )?PRIVATE KEY)-----\r?\n.*?'
                       r'^-----END \1-----\r?\n',
@@ -678,7 +682,8 @@ def verify_certificate_matches_key(config, cert_object, key_object):
             if (len(e.args[0]) == 1 and
                     re.search(r'\bkey\b.*\b(mis)?match\b', e.args[0][0][2])):
                 raise BadCertificateException('Error, certficate from sender '
-                                              'does not match private key')
+                                              'does not match private key') \
+                      from e
         except TypeError:
             pass
         raise
@@ -700,11 +705,14 @@ def _verify_trust_python(config, cert_objects):
     except ssl_crypto.X509StoreContextError as e:
         raise BadCertificateException('Error, could not verify certificate '
                                       'from sender was issued by a trusted '
-                                      'CA:\n' + str(e))
+                                      'CA:\n' + str(e)) \
+              from e
 
-_openssl_executable = None
-_openssl_version = None
-_openssl_env = None
+_openssl_executable = None  #pylint: disable=useless-suppression,invalid-name
+_openssl_version = None     #pylint: disable=useless-suppression,invalid-name
+_openssl_env = None         #pylint: disable=useless-suppression,invalid-name
+                            #        these are all global variables, but pylint
+                            #        thinks they're constants
 
 def _verify_trust_openssl_subprocess(config, certificates):
     '''
@@ -720,6 +728,8 @@ def _verify_trust_openssl_subprocess(config, certificates):
     if os.getuid() == 0:
         euid = os.geteuid()
         if euid != 0:
+            # It is safe to use preexec_fn since we do not run multiple
+            # threads when validating trust.
             def permanently_drop_privileges():
                 os.seteuid(0)
                 os.setuid(euid)
@@ -728,12 +738,13 @@ def _verify_trust_openssl_subprocess(config, certificates):
     if _openssl_executable is None:
         _openssl_executable = os.getenv('OPENSSL', default='openssl')
         cmd = [_openssl_executable, 'version']
-        proc = subprocess.Popen(args=cmd,
-                                stdin=subprocess.PIPE,
-                                stdout=subprocess.PIPE,
-                                stderr=subprocess.STDOUT,
-                                **kwargs)
-        output, _ = proc.communicate()
+        with subprocess.Popen(args=cmd,
+                              stdin=subprocess.PIPE,
+                              stdout=subprocess.PIPE,
+                              stderr=subprocess.STDOUT,
+                              **kwargs) as proc:
+            output, _ = proc.communicate()
+
         match = re.search(
             br'\bOpenSSL\s+([0-9]+)(?:\.([0-9]+)(?:\.([0-9]+)([a-z])?)?)?',
             output
@@ -840,7 +851,8 @@ def _verify_trust_openssl_subprocess(config, certificates):
 
     except OSError as e:
         raise BadConfigException('Error verifying certificate from sender '
-                                 'was issued by a trusted CA:\n' + str(e))
+                                 'was issued by a trusted CA:\n' + str(e)) \
+              from e
 
     finally:
         if intermediate_temp_file is not None:
@@ -882,7 +894,8 @@ def perform_verifications(config, certificates, key):
                 ]
             except ssl_crypto.Error as e:
                 raise BadCertificateException('Error loading a certificate '
-                                              'from sender:\n' + str(e))
+                                              'from sender:\n' + str(e)) \
+                      from e
         return cert_object_storage
 
     intermediates_tried = False
@@ -924,7 +937,7 @@ def perform_verifications(config, certificates, key):
                 # This happens if the key is non-RSA; only RSA keys support check()
                 pass
         except ssl_crypto.Error as e:
-            raise BadKeyException('Error loading private key:\n' + str(e))
+            raise BadKeyException('Error loading private key:\n' + str(e)) from e
         return kobject
 
     if (key is not None and
@@ -978,11 +991,12 @@ def perform_verifications(config, certificates, key):
         if key is None:
             try:
                 key = read_key_from_file(config['key_path'])
-            except KeyError:
+            except KeyError as e:
                 raise BadConfigException('Error, "verify_matching_key" is '
                                          'true, but we do not have a private '
                                          "key to check the sender's "
-                                         'certificate against')
+                                         'certificate against') \
+                      from e
         if key_object is None:
             key_object = make_key_object(key)
         try:
@@ -1040,6 +1054,8 @@ def backup_one_file(file_name, new_data, backup_file_name):
     return BACKUP_SUCCESS
 
 def install_files(config, certificates, key):
+    #pylint: disable=possibly-unused-variable; common installation logic is
+    #        factored-out in way that utilizes dynamic variable access via locals()
     certificate_data = []
     intermediate_data = []
     key_data = ''
@@ -1192,12 +1208,14 @@ def install_files(config, certificates, key):
             msgs.append('    The certificate and key files may have been left '
                         'in an inconsistent state.  Please check them and make '
                         'any necessary corrections.')
-        raise UpdateFailedException('\n'.join(msgs))
+        raise UpdateFailedException('\n'.join(msgs)) from e
 
     finally:
         os.umask(old_umask)
 
 def reload_service(config):
+    #pylint: disable=subprocess-popen-preexec-fn; we do not run multiple
+    #        threads when reloading services
     proc = subprocess.Popen(
         args=config['reload_command'],
         stdin=subprocess.DEVNULL,
@@ -1296,7 +1314,7 @@ def main():
                             action='store_const',
                             const=None,
                             help='do not change the effective user')
-        global g_args
+        global g_args #pylint: disable=global-statement
         g_args = parser.parse_args()
 
         if g_args.version:
@@ -1304,18 +1322,13 @@ def main():
             return 0
 
         try:
-            config_in = open(g_args.config_file, 'rt')
+            with open(g_args.config_file, 'rt', encoding='utf-8') as config_in:
+                drop_privileges()
+                config = load_configuration(config_in)
         except IOError as e:
             raise BadConfigException('Error opening configuration file "{}":\n{}'
-                                     .format(g_args.config_file, str(e)))
-
-        try:
-            drop_privileges()
-
-            config = load_configuration(config_in)
-
-        finally:
-            config_in.close()
+                                     .format(g_args.config_file, str(e))) \
+                  from e
 
         if g_args.check_config:
             messages = []
