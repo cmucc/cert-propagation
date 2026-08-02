@@ -1,5 +1,3 @@
-#!/usr/bin/python3
-
 # Copyright (C) 2022-2026 Keith Allen Bare II
 #
 # This file is part of cert-propagation.
