@@ -29,7 +29,11 @@ from unittest.mock import patch
 try:
     from importlib.metadata import version as pkg_version
 except ImportError:
-    pass
+    try:
+        from importlib_metadata import version as pkg_version
+    except ImportError:
+        def pkg_version(_):
+            return '0.0.0'
 
 import OpenSSL.crypto as ssl_crypto
 import OpenSSL.SSL as ssl
@@ -43,16 +47,10 @@ try:
 except ImportError:
     pass
 
-if 'pkg_version' not in globals():
-    try:
-        from importlib_metadata import version as pkg_version
-    except ImportError:
-        pkg_version = lambda x: '0.0.0'
-
 import cert_receive as cr
 
-@pytest.fixture(scope='session')
-def certificate_helper_per_session():
+@pytest.fixture(name='certificate_helper_per_session', scope='session')
+def certificate_helper_per_session_fixture():
     datadir = os.path.join(os.path.split(__file__)[0], 'data')
     keys = {}
     CertArgs = namedtuple('CertArgs', ['ca_num', 'intermediate_num', 'key_num'])
@@ -108,7 +106,9 @@ def certificate_helper_per_session():
 
         @classmethod
         def _make_cert_ssl_crypto(cls, params):
-            #pylint: disable=useless-suppression disable=no-member
+            #pylint: disable=useless-suppression,no-member; newer versions of
+            #        pyOpenSSL drop the X509 APIs, but we detect them and call
+            #        _make_cert_cryptography instead
             is_ca = ('CA:TRUE' if params.is_ca else 'CA:FALSE').encode()
             cert = ssl_crypto.X509()
             cert.set_version(2) # the value 2 represents version 3
@@ -245,8 +245,8 @@ def noop_config_check():
         mock.return_value = 'No error', None, None
         yield
 
-@pytest.fixture(scope='function')
-def mock_g_args():
+@pytest.fixture(name='mock_g_args', scope='function')
+def mock_g_args_fixture():
     with patch('cert_receive.g_args') as mock:
         mock.version = False
         mock.ca_file = None
@@ -257,8 +257,8 @@ def mock_g_args():
         mock.set_effective_user = 'nobody'
         yield mock
 
-@pytest.fixture(scope='function')
-def override_g_args(request, mock_g_args):
+@pytest.fixture(name='override_g_args', scope='function')
+def override_g_args_fixture(request, mock_g_args):
     request.instance.override_g_args = mock_g_args
     yield mock_g_args
     del request.instance.override_g_args

@@ -588,8 +588,9 @@ class TestProtocolDataMaximums:
         else:
             expect_match = r'\bexcess\s+data\b'
             data_length = allowed_bytes + 1
-        data = lambda: self.adaptive_character_generator(data_length,
-                                                         terminator=realsep)
+        def data():
+            return self.adaptive_character_generator(data_length,
+                                                     terminator=realsep)
 
         full_config = {''.join(data())[:-1]: {}}
         with self.simulated_stdin(data(), linesep='', **delay), \
