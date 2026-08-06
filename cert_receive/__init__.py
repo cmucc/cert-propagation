@@ -1120,7 +1120,7 @@ def install_files(config, certificates, key):
         certificate_data = certificates[0:1]
         intermediate_data = certificates[1:]
 
-    if not config['intermediate_order'] == 'ca_last':
+    if config['intermediate_order'] != 'ca_last':
         certificate_data.reverse()
         intermediate_data.reverse()
 
