@@ -413,3 +413,193 @@ class TestVerifications:
             cr.perform_verifications(config,
                                      [self.get_cert(intermediate_num=1, key_num=3)],
                                      self.get_key(key_num=2))
+
+class TestFindPemBlock:
+    foreach_whitespace = pytest.mark.parametrize(
+        'whitespace',
+        ['', '\n', '\r\n', '\r', ' ', '\t', '\v', '\f'],
+        ids=['none', 'lf', 'crlf', 'cr', 'space', 'tab', 'vtab', 'formfeed'],
+    )
+
+    @foreach_whitespace
+    @pytest.mark.parametrize('what', ['certificate', 'key'])
+    def test_vanilla_1(self, what, whitespace):
+        data = [
+            '-----BEGIN CERTIFICATE-----',
+            'alpha',
+            '-----END CERTIFICATE-----',
+            '-----BEGIN PRIVATE KEY-----',
+            'bravo',
+            '-----END PRIVATE KEY-----',
+            '-----BEGIN CERTIFICATE-----',
+            'charlie',
+            '-----END CERTIFICATE-----',
+        ]
+        if whitespace in ('\n', '\r\n', '\r'):
+            data.append('')
+        data = whitespace.join(data)
+
+        want_cert = what == 'certificate'
+        if want_cert:
+            labels = cr.CERTIFICATE_LABELS
+        else:
+            labels = cr.KEY_LABELS
+
+        pos = 0
+        items = []
+        while pos != -1:
+            item, pos = cr.find_pem_block(data, labels, pos=pos)
+            if item is not None:
+                items.append(item)
+
+        assert [item.startswith('-----BEGIN ') for item in items] == [True] * len(items)
+        assert [(whitespace + '-----END ') in item for item in items] == [True] * len(items)
+
+        if want_cert:
+            assert len(items) == 2
+            assert ['alpha' in item for item in items] == [True, False]
+            assert ['bravo' in item for item in items] == [False, False]
+            assert ['charlie' in item for item in items] == [False, True]
+        else:
+            assert len(items) == 1
+            assert 'alpha' not in items[0]
+            assert 'bravo' in items[0]
+            assert 'charlie' not in items[0]
+
+        assert ['CERTIFICATE' in item for item in items] == [want_cert] * len(items)
+        assert ['KEY' in item for item in items] == [not want_cert] * len(items)
+
+    @foreach_whitespace
+    def test_vanilla_2(self, whitespace):
+        data = [
+            '-----BEGIN X509 CERTIFICATE-----',
+            'achievement',
+            '-----END X509 CERTIFICATE-----',
+            '-----BEGIN PRIVATE KEY-----',
+            'skeleton',
+            '-----END PRIVATE KEY-----',
+            '-----BEGIN RSA PRIVATE KEY-----',
+            'car',
+            '-----END RSA PRIVATE KEY-----',
+        ]
+        if whitespace in ('\n', '\r\n', '\r'):
+            data.append('')
+        data = whitespace.join(data)
+
+        item, pos = cr.find_pem_block(data, cr.KEY_LABELS)
+        assert item is not None
+        assert pos != -1
+        assert item.startswith('-----BEGIN PRIVATE KEY-----')
+        assert '-----END PRIVATE KEY-----' in item
+        assert 'skeleton' in item
+        assert [x in item for x in ['CERTIFICATE', 'RSA', 'achievement', 'car']] == [False] * 4
+
+    def test_wrong_dashes(self):
+        data = '\n'.join([
+            '-------BEGIN PRIVATE KEY-------',
+            'horrible',
+            '-------END PRIVATE KEY-------',
+            '-----BEGIN PRIVATE KEY-----',
+            'excellent',
+            '-----END PRIVATE KEY-----',
+            '------BEGIN PRIVATE KEY-----',
+            'terrible',
+            '------END PRIVATE KEY-----',
+            '----------BEGIN PRIVATE KEY----------',
+            'no good',
+            '----------END PRIVATE KEY----------',
+            '',
+        ])
+
+        pos = 0
+        items = []
+        while pos != -1:
+            item, pos = cr.find_pem_block(data, cr.KEY_LABELS, pos=pos)
+            if item is not None:
+                items.append(item)
+
+        assert len(items) == 1
+        item = items[0]
+        assert item.startswith('-----BEGIN PRIVATE KEY-----\n')
+        assert '\n-----END PRIVATE KEY-----' in item
+        assert 'excellent' in item
+        assert [x in item for x in ['horrible', 'terrible', 'no good']] == [False] * 3
+
+    def test_spurious_delimiters(self):
+        data = '\r\n'.join([
+            '-----BEGIN PRIVATE KEY-----',
+            'blah blah blah',
+            '-----BEGIN CERTIFICATE-----',
+            'blah blah blah',
+            '-----BEGIN CERTIFICATE-----',
+            'first',
+            '-----END CERTIFICATE-----',
+            'blah blah blah',
+            '-----END PRIVATE KEY-----',
+            'blah blah blah',
+            '-----END CERTIFICATE-----',
+            '-----BEGIN CERTIFICATE-----',
+            'second',
+            '-----END CERTIFICATE-----',
+            ''
+        ])
+
+        pos = 0
+        items = []
+        while pos != -1:
+            item, pos = cr.find_pem_block(data, cr.CERTIFICATE_LABELS, pos=pos)
+            if item is not None:
+                items.append(item)
+
+        assert len(items) == 2
+        assert [item.startswith('-----BEGIN CERTIFICATE-----\r\n') for item in items] == [True, True]
+        assert ['\r\n-----END CERTIFICATE-----' in item for item in items] == [True, True]
+        assert 'first' in items[0]
+        assert 'second' in items[1]
+        assert ['PRIVATE' in item for item in items] == [False, False]
+        assert ['blah' in item for item in items] == [False, False]
+
+    @pytest.mark.parametrize('what', ['wrong', 'variant'])
+    def test_delimiter_mismatch(self, what):
+        data = [
+            '-----BEGIN X.509 CERTIFICATE-----',
+            'HERE',
+        ]
+        if what == 'wrong':
+            data.append('-----END PRIVATE KEY-----')
+        else:
+            data.append('-----END TRUSTED CERTIFICATE-----')
+        data.append('')
+        data = '\r'.join(data)
+
+        item, pos = cr.find_pem_block(data, cr.CERTIFICATE_LABELS)
+        assert item is None
+        assert pos == -1
+
+    def test_wrong_then_right_dashes(self):
+        data = '\n'.join([
+            '------BEGIN TRUSTED CERTIFICATE-----BEGIN CERTIFICATE-----',
+            'tomfoolery!',
+            '-----END CERTIFICATE-----',
+            '',
+        ])
+
+        item, pos = cr.find_pem_block(data, cr.CERTIFICATE_LABELS)
+        assert item is not None
+        assert pos != -1
+        assert item.startswith('-----BEGIN CERTIFICATE-----\n')
+        assert '\n-----END CERTIFICATE-----' in item
+        assert 'tomfoolery!' in item
+        assert 'TRUSTED' not in item
+
+    def test_right_then_wrong_dashes(self):
+        data = '\r\n'.join([
+            '-----BEGIN RSA PRIVATE KEY------BEGIN PRIVATE KEY-----',
+            'no, no, no!',
+            '-----END PRIVATE KEY-----',
+            ''
+        ])
+
+        item, pos = cr.find_pem_block(data, cr.KEY_LABELS)
+        assert item is None
+        assert pos == -1

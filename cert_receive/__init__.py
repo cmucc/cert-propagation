@@ -601,6 +601,62 @@ def read_from_file(file_name, max_size=OVERALL_PEM_MAXIMUM):
 
     return data
 
+def find_pem_block(data, labels, pos=0):
+    '''
+    Extracts the first PEM block in data[pos:] with a label matching
+    label_regex.
+
+    Returns a (block, endpos) pair, where endpos is the first position in
+    data after the matching block.
+    '''
+    dashes = '-----'
+    labels = [x.decode() for x in labels]
+    begin_pat = re.compile('-----BEGIN ({})-----'.format('|'.join(labels)))
+    end_pat = re.compile('-----END ({})-----'.format('|'.join(labels)))
+
+    while pos < len(data):
+        begin = begin_pat.search(data, pos)
+        if not begin:
+            return None, -1
+        if begin.start() > 0 and data[begin.start() - 1] == '-':
+            leading = data[max(0, begin.start() - len(dashes) - 1):begin.start()]
+            if leading[-len(dashes):] != dashes or leading[-len(dashes) - 1:-len(dashes)] == '-':
+                # BEGIN delimiter candidate has too many leading dashes
+                pos = begin.end() - len(dashes)
+                continue
+
+        next_pos = data.find(dashes, begin.end())
+        if next_pos == -1:
+            return None, -1
+        if begin.end() < next_pos and data[begin.end()] == '-':
+            # BEGIN delimiter candidate has too many trailing dashes
+            pos = next_pos
+            continue
+
+        end = end_pat.search(data, next_pos)
+        if not end:
+            return None, -1
+        if end.start() > next_pos:
+            # we do not have an END delimiter at next_pos, or it is an
+            # END delimiter with too many leading dashes
+            pos = next_pos
+            continue
+        if end.end() < len(data) and data[end.end()] == '-':
+            trailing = data[end.end():end.end() + len(dashes) + 1]
+            if trailing[0:len(dashes)] != dashes or trailing[len(dashes):] == '-':
+                # END delimiter has too many trailing dashes
+                pos = end.end() - len(dashes)
+                continue
+        if begin.group(1) != end.group(1):
+            # labels do not match
+            pos = end.end()
+            continue
+
+        return data[begin.start():end.end()], end.end()
+
+    # we used up all of data
+    return None, -1
+
 def read_key_from_file(key_file_name):
     '''
     Reads and returns an already-installed PEM private key.
@@ -616,15 +672,12 @@ def read_key_from_file(key_file_name):
         etype = BadKeyException if e.errno == errno.EFBIG else BadConfigException
         raise etype('Error reading key file:\n' + str(e)) from e
 
-    match = re.search(r'^-----BEGIN ((?:RSA )?PRIVATE KEY)-----\r?\n.*?'
-                      r'^-----END \1-----\r?\n',
-                      data,
-                      re.MULTILINE | re.DOTALL)
-    if not match:
+    key, _ = find_pem_block(data, KEY_LABELS)
+    if key is None:
         raise BadKeyException('Error, could not find a PEM-encoded private '
                               'key in {!r}'
                               .format(key_file_name))
-    return match.group(0)
+    return key
 
 def read_certificates_from_file(cert_file_name):
     '''
@@ -637,11 +690,14 @@ def read_certificates_from_file(cert_file_name):
     any PEM-encoded certificates.
     '''
     data = read_from_file(cert_file_name)
-    certs = [match.group(0) for match in re.finditer(
-                 r'^-----BEGIN ((?:X509 |TRUSTED |)CERTIFICATE)-----\r?\n.*?'
-                 r'^-----END \1-----\r?\n',
-                 data,
-                 re.MULTILINE | re.DOTALL)]
+    certs = []
+
+    pos = 0
+    while pos != -1:
+        cert, pos = find_pem_block(data, CERTIFICATE_LABELS, pos=pos)
+        if cert is not None:
+            certs.append(cert)
+
     if not certs:
         raise BadCertificateException('Error, could not find any PEM-'
                                       'encoded certificates in {!r}'
