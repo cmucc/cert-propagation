@@ -15,13 +15,14 @@
 # You should have received a copy of the GNU General Public License along
 # with cert-propagation. If not, see <https://www.gnu.org/licenses/>.
 
+from contextlib import contextmanager
 import grp
 import os
 import pwd
 import stat
 import sys
 import time
-from unittest.mock import patch
+from unittest.mock import mock_open, patch
 
 import pytest
 
@@ -783,3 +784,160 @@ class TestInstallation:
         assert final_files == ['cert', 'cert.bak']
 
         assert cert.read_text() == 'smoosh\ncrunch\n'
+
+@pytest.fixture()
+def class_tmp_path(tmp_path, request):
+    request.cls.tmp_path = tmp_path
+    yield
+    del request.cls.tmp_path
+
+@pytest.mark.usefixtures('class_tmp_path')
+class TestUpdateBundle:
+    # While the line separator nominally shouldn't matter, cert_receive uses
+    # a mix of binary and text I/O.  And that means we can afoul of things
+    # due to Python's automatic newline conversion feature.
+    #
+    # For that reason, we also need to be careful to use binary I/O when
+    # writing to bundle_path in the test cases; otherwise we won't actually
+    # test with intended line separator.
+    foreach_linesep = pytest.mark.parametrize('linesep',
+                                              ['\n', '\r\n', '\r'],
+                                              ids=['lf', 'crlf', 'cr'])
+
+    @classmethod
+    @contextmanager
+    def create_mocks(cls, bundle_content, config, certificates, key):
+        fake_args = [
+            'cert_receive.py',
+            '--no-ca-path',
+            '--no-set-effective-user',
+        ]
+        real_open = open
+        with patch.object(sys, 'argv', new=fake_args), \
+             patch('cert_receive.load_configuration') as fake_lc, \
+             patch('cert_receive.interact_with_sender') as fake_iws, \
+             patch('builtins.open') as fake_open, \
+             patch('cert_receive.perform_verifications'):
+            cls.bundle_path = cls.tmp_path / 'bundle.pem'
+            cls.bundle_path.touch(mode=0o600)
+            cls.bundle_path.write_bytes(bundle_content.encode('utf-8'))
+            config['certificate_path'] = str(cls.bundle_path)
+            config.setdefault('verify_subject_cn', False)
+            fake_lc.return_value = {'test_config': config}
+
+            def iws_side_effect(unused_config_in):
+                _, e, w = cr.check_configuration_section('test_config', config)
+                assert not e, 'Test configuration resulted in errors:\n{}' \
+                              .format('\n'.join(e))
+                assert not w, 'Test configuration resulted in warnings:\n{}' \
+                              .format('\n'.join(e))
+                return config, certificates, key
+            fake_iws.side_effect = iws_side_effect
+
+            def open_side_effect(name, *args, **kwargs):
+                if name.startswith(str(cls.bundle_path)):
+                    return real_open(name, *args, **kwargs)
+                if name == '/etc/cert_receive.json':
+                    return mock_open()(name, *args, **kwargs)
+                assert False, 'Code under test opened an unexpected file'
+                return None
+            fake_open.side_effect = open_side_effect
+
+            yield
+
+            del cls.bundle_path
+
+    @foreach_linesep
+    @pytest.mark.parametrize('bundle_order', ['key_first', 'key_last'])
+    def test_bundled_key(self, bundle_order, linesep):
+        existing = [
+            linesep.join([
+                '-----BEGIN PRIVATE KEY-----',
+                'The key!',
+                '-----END PRIVATE KEY-----',
+                '',
+            ]),
+            linesep.join([
+                '-----BEGIN CERTIFICATE-----',
+                'Old certificate.',
+                '-----END CERTIFICATE-----',
+                '',
+            ]),
+        ]
+        config = {
+            'bundle_key': True,
+            'bundle_order': bundle_order,
+        }
+        new_cert = linesep.join([
+            '-----BEGIN CERTIFICATE-----',
+            'New certificate, yay.',
+            '-----END CERTIFICATE-----',
+            '',
+        ])
+        new_key = None
+        expected = [existing[0], new_cert]
+        if bundle_order == 'key_last':
+            existing.reverse()
+            expected.reverse()
+        with self.create_mocks(''.join(existing), config, [new_cert], new_key):
+            retval = cr.main()
+            assert retval == 0
+            actual = self.bundle_path.read_text()
+            expected = ''.join(expected)
+            if linesep != '\n':
+                expected = expected.replace(linesep, '\n')
+            assert actual == expected
+
+    @foreach_linesep
+    @pytest.mark.parametrize('operation',
+                             ['empty', 'preserve-ca_first', 'preserve-ca_last'])
+    def test_bundled_intermediate(self, operation, linesep):
+        existing = [
+            linesep.join([
+                '-----BEGIN CERTIFICATE-----',
+                'Application, signed by Intermediate-1',
+                '-----END CERTIFICATE-----',
+                '',
+            ]),
+            linesep.join([
+                '-----BEGIN CERTIFICATE-----',
+                'Intermediate-1, signed by Intermediate-2',
+                '-----END CERTIFICATE-----',
+                '',
+            ]),
+            linesep.join([
+                '-----BEGIN CERTIFICATE-----',
+                'Intermediate-2, signed by CA',
+                '-----END CERTIFICATE-----',
+                '',
+            ]),
+        ]
+        config = {
+            'key_path': str(self.tmp_path / 'key.pem'),
+            'bundle_intermediate': True,
+            'if_no_intermediate': operation.split('-')[0],
+        }
+        new_cert = linesep.join([
+            '-----BEGIN CERTIFICATE-----',
+            'New application, signed by ' +
+            'Intermediate-1' if operation.startswith('preserve-') else 'CA',
+            '-----END CERTIFICATE-----',
+            '',
+        ])
+        new_key = None
+        expected = [new_cert]
+        if operation.startswith('preserve-'):
+            expected.extend(existing[1:])
+            order = operation.split('-')[1]
+            if order == 'ca_first':
+                existing.reverse()
+                expected.reverse()
+            config['intermediate_order'] = order
+        with self.create_mocks(''.join(existing), config, [new_cert], new_key):
+            retval = cr.main()
+            assert retval == 0
+            actual = self.bundle_path.read_text()
+            expected = ''.join(expected)
+            if linesep != '\n':
+                expected = expected.replace(linesep, '\n')
+            assert actual == expected

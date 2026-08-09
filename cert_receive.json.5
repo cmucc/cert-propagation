@@ -1,4 +1,4 @@
-.TH CERT_RECEIVE.JSON "5" "February 2026" "cert_receive.py 0.3" "File Formats and Configuration"
+.TH CERT_RECEIVE.JSON "5" "August 2026" "cert_receive.py 0.3" "File Formats and Configuration"
 .
 .\" Copyright (C) 2025, 2026 Keith Allen Bare II
 .
@@ -215,18 +215,27 @@ is
 .
 .TP
 .B if_no_intermediate
-Specifies what to do to
-.I \%intermediate_path
-if
+Specifies how to handle intermediate certificates when the sender does not
+provide any.  An empty set of intermediate certificates can be installed,
+the existing intermediate certificates (if any) can be preserved, or, when
 .I \%bundle_intermediate
 is
-.B false
-and the sender does not provide any intermediate certificates.  An empty
-file can be installed, the \%(non\-)\:ex\%ist\%ing file can be preserved, or
-any existing file can be unlinked.  Version 0.2 and earlier did not support
-this setting and would always preserve the path.  However, preserving the
-path does not usually make sense, so newer versions default to writing an
-empty file.
+.BR false ,
+any existing file at
+.I \%intermediate_path
+can be unlinked.
+.IP
+Version \%0.2 and earlier did not support this setting and would install an
+empty set of intermediate certificates when
+.I \%bundle_intermediate
+was
+.B true
+and preserve the previous intermediate certificates when
+.I \%bundle_intermediate
+was
+.BR false .
+The prior behavior was not consistent, so newer versions default to writing
+an empty set of intermediate certificates.
 .IP
 \%type:\~string \%{\(dqempty\(dq|\:\(dqpreserve\(dq|\:\(dqunlink\(dq},
 \%default:\~\(dqempty\(dq
