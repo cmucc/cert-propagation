@@ -289,16 +289,19 @@ def check_configuration_section(name, section):
                                 '"bundle_key" is false')
 
         if section.get('bundle_intermediate', False):
-            for setting in ('if_no_intermediate', 'intermediate_path'):
-                if setting in section:
-                    warnings.append('setting "{}" does not apply when '
-                                    '"bundle_intermediate" is true'
-                                    .format(setting))
-            # The user could have an intermediate_path set despite the fact
-            # they're actually bundling the intermediates.  To make sure we
-            # don't muck with intermediate_path, we'll set the option to
-            # preserve it.
-            section['if_no_intermediate'] = 'preserve'
+            if 'intermediate_path' in section:
+                warnings.append('setting "intermediate_path" does not apply '
+                                'when "bundle_intermediate" is true')
+                # The user provided an intermediate_path, despite the fact
+                # we're bundling the intermediates.  Clear the key from the
+                # configuration, to make sure we do not muck with the
+                # indicated path based on the if_no_intermediate setting.
+                del section['intermediate_path']
+            if section.get('if_no_intermediate', '') == 'unlink':
+                warnings.append('ignoring "if_no_intermediate" value of '
+                                '"unlink", which does not make sense when '
+                                '"bundle_intermediate" is true')
+                del section['if_no_intermediate']
 
         if 'reload_command' not in section:
             if 'reload_timeout' in section:
@@ -516,6 +519,29 @@ def interact_with_sender(full_config):
 
     return (section, certificates, key)
 
+def read_data_to_preserve(config, certificates, key):
+    if key is None and config['bundle_key']:
+        # We're bundling the key with the certificate, but the sender did not
+        # provide a key.  We'll need to read the existing key so that we can
+        # rewrite it in the new bundle.
+        key = read_key_from_file(config['certificate_path'],
+                                 max_size=OVERALL_PEM_MAXIMUM)
+
+    if (len(certificates) == 1 and config['bundle_intermediate'] and
+            config['if_no_intermediate'] == 'preserve'):
+        # We're bundling intermediates with the certificate and need to
+        # preserve any existing intermediates because the sender did not
+        # provide any.  To do so, we'll need to read the intermediates from
+        # the existing bundle so that we can rewrite them in the new bundle.
+        preserved = read_certificates_from_file(config['certificate_path'])
+        if config['intermediate_order'] == 'ca_last':
+            certificates = certificates + preserved[1:]
+        else:
+            certificates = preserved[0:-1] + certificates
+            certificates.reverse()
+
+    return certificates, key
+
 def verify_certificate_chain(cert_objects):
     '''
     Validates the provided cert_objects chain, e.g., the issuer of the first
@@ -652,12 +678,12 @@ def find_pem_block(data, labels, pos=0):
             pos = end.end()
             continue
 
-        return data[begin.start():end.end()], end.end()
+        return data[begin.start():end.end()] + '\n', end.end()
 
     # we used up all of data
     return None, -1
 
-def read_key_from_file(key_file_name):
+def read_key_from_file(key_file_name, max_size=PEM_BLOCK_MAXIMUM):
     '''
     Reads and returns an already-installed PEM private key.
 
@@ -667,7 +693,7 @@ def read_key_from_file(key_file_name):
     private key.
     '''
     try:
-        data = read_from_file(key_file_name, max_size=PEM_BLOCK_MAXIMUM)
+        data = read_from_file(key_file_name, max_size=max_size)
     except OSError as e:
         etype = BadKeyException if e.errno == errno.EFBIG else BadConfigException
         raise etype('Error reading key file:\n' + str(e)) from e
@@ -961,9 +987,7 @@ def perform_verifications(config, certificates, key):
         if intermediates_tried:
             return
         intermediates_tried = True
-        if (config['bundle_intermediate'] or
-                config['if_no_intermediate'] != 'preserve' or
-                len(certificates) > 1):
+        if config['if_no_intermediate'] != 'preserve' or len(certificates) > 1:
             return
         try:
             intermediates = read_certificates_from_file(config['intermediate_path'])
@@ -1401,6 +1425,8 @@ def main():
             return 0
 
         config, certificates, key = interact_with_sender(config)
+
+        certificates, key = read_data_to_preserve(config, certificates, key)
 
         perform_verifications(config, certificates, key)
 

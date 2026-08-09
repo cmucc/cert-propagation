@@ -493,6 +493,7 @@ generated-members = [
     "override_g_args",
     "simulated_input",
     "simulated_stdin",
+    "tmp_path",
 ]
 
 # Tells whether missing members accessed in mixin class should be ignored. A
