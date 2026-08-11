@@ -427,6 +427,8 @@ def interact_with_sender(full_config):
         if warnings:
             print('\n'.join([header] + warnings), file=sys.stderr)
 
+        alt_lineseps = re.compile(r'(?:\r\n|\r)')
+
         total_bytes = 0
         certificates = []
         key = None
@@ -507,6 +509,10 @@ def interact_with_sender(full_config):
 
             scratch.extend([sender.before, sender.match.group(0), b'\n'])
             pem_item = ''.join(part.decode('ascii') for part in scratch)
+            # Post-process the PEM item, applying a universal newlines-like
+            # transformation, as if we were reading from a text file opened
+            # with newline=None.
+            pem_item = alt_lineseps.sub('\n', pem_item)
 
             if what.endswith(b'PRIVATE KEY'):
                 key = pem_item

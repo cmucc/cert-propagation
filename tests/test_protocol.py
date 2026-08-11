@@ -65,9 +65,6 @@ class TestProtocolBasic:
         assert len(certs) == 1
         assert key is not None
 
-        if linesep != '\n':
-            certs = [cert.replace(linesep, '\n') for cert in certs]
-            key = key.replace(linesep, '\n')
         cert_re = re.compile(r'^You got a gold star!$', re.MULTILINE)
         key_re = re.compile(r'^Better not to share$', re.MULTILINE)
         assert cert_re.search(certs[0])
@@ -92,8 +89,6 @@ class TestProtocolBasic:
         assert len(certs) == 1
         assert key is None
 
-        if linesep != '\n':
-            certs = [cert.replace(linesep, '\n') for cert in certs]
         assert re.search(r'^Thats all folks$', certs[0], re.MULTILINE)
 
     @foreach_delay
@@ -118,8 +113,6 @@ class TestProtocolBasic:
         assert len(certs) == 2
         assert key is None
 
-        if linesep != '\n':
-            certs = [cert.replace(linesep, '\n') for cert in certs]
         two_re = re.compile(r'^2 Two 2 two$', re.MULTILINE)
         one_re = re.compile(r'^one 1 One !$', re.MULTILINE)
         assert two_re.search(certs[0])
@@ -193,8 +186,6 @@ class TestProtocolEncoding:
         assert len(certs) == 1
         assert key is None
 
-        if linesep != '\n':
-            certs = [cert.replace(linesep, '\n') for cert in certs]
         assert re.search(r'^:-\)$', certs[0], re.MULTILINE)
 
     @pytest.mark.parametrize('encoding', ['utf8', 'latin9', 'eucjp'])
@@ -254,8 +245,6 @@ class TestProtocolPemProcessing:
         assert len(certs) == 1
         assert key is None
 
-        if linesep != '\n':
-            certs[0] = certs[0].replace(linesep, '\n')
         assert re.search(r'^It certifies$', certs[0], re.MULTILINE)
         assert certs[0].endswith('\n')
 
@@ -277,8 +266,6 @@ class TestProtocolPemProcessing:
         assert len(certs) == 1
         assert key is None
 
-        if linesep != '\n':
-            certs[0] = certs[0].replace(linesep, '\n')
         assert re.search(r'^ABCDEFGHIJKL$', certs[0], re.MULTILINE)
         assert certs[0].startswith('-----BEGIN')
 
@@ -303,9 +290,6 @@ class TestProtocolPemProcessing:
         assert len(certs) == 1
         assert key is not None
 
-        if linesep != '\n':
-            certs[0] = certs[0].replace(linesep, '\n')
-            key = key.replace(linesep, '\n')
         cert_re = re.compile(r'^WXYZ7890$', re.MULTILINE)
         key_re = re.compile(r'^1234ABCD$', re.MULTILINE)
         assert cert_re.search(certs[0])
