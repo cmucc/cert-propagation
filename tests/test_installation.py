@@ -28,6 +28,7 @@ import pytest
 
 import cert_receive as cr
 
+
 @pytest.mark.usefixtures('override_g_args')
 class TestInstallation:
     def add_defaults_and_process_config(self, config, allow_warn=False):
@@ -785,11 +786,13 @@ class TestInstallation:
 
         assert cert.read_text() == 'smoosh\ncrunch\n'
 
+
 @pytest.fixture()
 def class_tmp_path(tmp_path, request):
     request.cls.tmp_path = tmp_path
     yield
     del request.cls.tmp_path
+
 
 @pytest.mark.usefixtures('class_tmp_path')
 class TestUpdateBundle:
@@ -941,3 +944,81 @@ class TestUpdateBundle:
             if linesep != '\n':
                 expected = expected.replace(linesep, '\n')
             assert actual == expected
+
+
+@pytest.mark.usefixtures('class_tmp_path', 'mock_g_args', 'noop_privileges')
+class TestFileEncoding:
+    TEST_KEY = '\n'.join([
+        '-----BEGIN PRIVATE KEY-----',
+        '0123456789',
+        '-----END PRIVATE KEY-----',
+        '',
+    ])
+    TEST_CERTIFICATE = '\n'.join([
+        '-----BEGIN CERTIFICATE-----',
+        'ABCDEF',
+        '-----END CERTIFICATE-----',
+        '',
+    ])
+
+    foreach_encoding = pytest.mark.parametrize('encoding',
+                                               ['utf8', 'latin1', 'shiftjis'])
+
+    @foreach_encoding
+    def test_read_ascii_works_with_compatible_encoding(self, encoding):
+        bundle = self.tmp_path / 'bundle.pem'
+        bundle.write_text(self.TEST_KEY + self.TEST_CERTIFICATE,
+                          encoding='ascii')
+
+        with patch('cert_receive.system_encoding') as mock_encoding:
+            mock_encoding.return_value = encoding
+            key = cr.read_key_from_file(str(bundle),
+                                        max_size=cr.OVERALL_PEM_MAXIMUM)
+            certs = cr.read_certificates_from_file(str(bundle))
+
+        assert key == self.TEST_KEY
+        assert len(certs) == 1
+        assert certs[0] == self.TEST_CERTIFICATE
+
+    @foreach_encoding
+    def test_read_non_ascii_comments_works_with_same_encoding(self, encoding):
+        comments = ['ASCII text']
+        if encoding != 'shiftjis':
+            comments.append('Fáncy tëxt')
+        if encoding != 'latin1':
+            comments.append('得体の知れない')
+        comments.append('')
+
+        bundle = self.tmp_path / 'bundle.pem'
+        bundle.write_text('\n'.join(comments) +
+                          self.TEST_KEY + self.TEST_CERTIFICATE,
+                          encoding=encoding)
+
+        with patch('cert_receive.system_encoding') as mock_encoding:
+            mock_encoding.return_value = encoding
+            key = cr.read_key_from_file(str(bundle),
+                                        max_size=cr.OVERALL_PEM_MAXIMUM)
+            certs = cr.read_certificates_from_file(str(bundle))
+
+        assert key == self.TEST_KEY
+        assert len(certs) == 1
+        assert certs[0] == self.TEST_CERTIFICATE
+
+    @foreach_encoding
+    def test_written_data_is_ascii_with_compatible_encoding(self, encoding):
+        cert_path = self.tmp_path / 'certificate.pem'
+        config = {
+            'certificate_path': cert_path,
+            'certificate_owner': 0,
+            'certificate_group': 0,
+            'certificate_perms': 0o644,
+        }
+
+        with patch('cert_receive.system_encoding') as mock_encoding:
+            mock_encoding.return_value = encoding
+            cr.write_one_file(str(cert_path),
+                              self.TEST_CERTIFICATE,
+                              config,
+                              'certificate_')
+
+        assert cert_path.read_text(encoding='ascii') == self.TEST_CERTIFICATE
