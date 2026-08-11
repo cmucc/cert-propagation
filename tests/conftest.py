@@ -19,6 +19,7 @@ from collections import namedtuple
 from contextlib import contextmanager
 import errno
 from datetime import datetime, timedelta, timezone
+import locale
 import os
 import os.path
 from threading import Event, Thread
@@ -48,6 +49,13 @@ except ImportError:
     pass
 
 import cert_receive as cr
+
+@pytest.fixture(scope='session', autouse=True)
+def setlocale():
+    # Make sure cert_receive determines the system encoding based on the
+    # locale configured by the system/user.  Needed because the tests do
+    # not call cert_receive.main.
+    locale.setlocale(locale.LC_ALL, '')
 
 @pytest.fixture(name='certificate_helper_per_session', scope='session')
 def certificate_helper_per_session_fixture():
@@ -81,7 +89,7 @@ def certificate_helper_per_session_fixture():
     class CertificateHelper:
         @staticmethod
         def datetime_to_asn1(dt):
-            return dt.strftime('%Y%m%d%H%M%SZ').encode()
+            return dt.strftime('%Y%m%d%H%M%SZ').encode(cr.system_encoding())
 
         @staticmethod
         def get_config():
@@ -109,11 +117,12 @@ def certificate_helper_per_session_fixture():
             #pylint: disable=useless-suppression,no-member; newer versions of
             #        pyOpenSSL drop the X509 APIs, but we detect them and call
             #        _make_cert_cryptography instead
-            is_ca = ('CA:TRUE' if params.is_ca else 'CA:FALSE').encode()
+            is_ca = ('CA:TRUE' if params.is_ca else 'CA:FALSE') \
+                    .encode(cr.system_encoding())
             cert = ssl_crypto.X509()
             cert.set_version(2) # the value 2 represents version 3
-            cert.get_subject().commonName = params.subject.encode()
-            cert.get_issuer().commonName = params.issuer.encode()
+            cert.get_subject().commonName = params.subject.encode(cr.system_encoding())
+            cert.get_issuer().commonName = params.issuer.encode(cr.system_encoding())
             now = datetime.now(timezone.utc)
             cert.set_notBefore(cls.datetime_to_asn1(now - timedelta(days=1)))
             cert.set_notAfter(cls.datetime_to_asn1(now + timedelta(days=30)))
@@ -211,12 +220,14 @@ def certificate_helper_per_session_fixture():
         @classmethod
         def get_key(cls, key_num):
             return ssl_crypto.dump_privatekey(ssl_crypto.FILETYPE_PEM,
-                                              cls.get_key_object(key_num)).decode()
+                                              cls.get_key_object(key_num)) \
+                   .decode(cr.system_encoding())
 
         @classmethod
         def get_cert(cls, **kwargs):
             return ssl_crypto.dump_certificate(ssl_crypto.FILETYPE_PEM,
-                                               cls.get_cert_object(**kwargs)).decode()
+                                               cls.get_cert_object(**kwargs)) \
+                   .decode(cr.system_encoding())
 
     return CertificateHelper
 
@@ -275,7 +286,7 @@ def simulated_input_thread(fd, terminate, data, linesep,
 
     def do_one_line(line, is_last=False):
         if isinstance(line, str):
-            line = line.encode()
+            line = line.encode('utf-8')
         if not line and is_last:
             return
         if byte_delay is not None:
@@ -330,7 +341,7 @@ def simulated_input_manager(data, linesep=b'\n',
                             byte_delay=None, line_delay=None,
                             close_at_end_of_data=True):
     if not isinstance(linesep, bytes):
-        linesep = linesep.encode()
+        linesep = linesep.encode('utf-8')
     pipe_read, pipe_write = os.pipe()
     terminate = Event()
     worker = Thread(target=simulated_input_thread,
