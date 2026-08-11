@@ -96,26 +96,6 @@ class TestProtocolBasic:
             certs = [cert.replace(linesep, '\n') for cert in certs]
         assert re.search(r'^Thats all folks$', certs[0], re.MULTILINE)
 
-    @foreach_linesep
-    def test_non_ascii_config_name(self, linesep):
-        full_config = {'Über': {}}
-        lines = [
-            'Über',
-            '-----BEGIN X509 CERTIFICATE-----',
-            ':-)',
-            '-----END X509 CERTIFICATE-----',
-            '',
-        ]
-        with self.simulated_stdin(lines, linesep=linesep):
-            section, certs, key = cr.interact_with_sender(full_config)
-        assert section is full_config['Über']
-        assert len(certs) == 1
-        assert key is None
-
-        if linesep != '\n':
-            certs = [cert.replace(linesep, '\n') for cert in certs]
-        assert re.search(r'^:-\)$', certs[0], re.MULTILINE)
-
     @foreach_delay
     @foreach_linesep
     def test_certificate_chain(self, linesep, delay):
@@ -182,6 +162,75 @@ class TestProtocolBasic:
         with self.simulated_stdin(b'dubious\n\n', **end_of_data), \
              pytest.raises(cr.BadSenderException, match=match):
             cr.interact_with_sender(full_config)
+
+
+@pytest.mark.usefixtures('mock_g_args')
+class TestProtocolEncoding:
+    @pytest.mark.parametrize('encoding', ['utf8', 'latin1'])
+    @foreach_linesep
+    def test_non_ascii_config_name(self, linesep, encoding):
+        full_config = {'Über': {}}
+        lines = [
+            'Über',
+            '-----BEGIN X509 CERTIFICATE-----',
+            ':-)',
+            '-----END X509 CERTIFICATE-----',
+            '',
+        ]
+        lines = [line.encode(encoding) for line in lines]
+        with self.simulated_stdin(lines, linesep=linesep.encode(encoding)):
+            if encoding != 'utf8':
+                # The latin1 encoding is not valid UTF-8, because it will
+                # include an isolated byte with the MSB set.
+                with pytest.raises(cr.BadSenderException,
+                                   match=r'\bnot\s+decode\s+config.*\bname\b'):
+                    cr.interact_with_sender(full_config)
+                return
+
+            section, certs, key = cr.interact_with_sender(full_config)
+
+        assert section is full_config['Über']
+        assert len(certs) == 1
+        assert key is None
+
+        if linesep != '\n':
+            certs = [cert.replace(linesep, '\n') for cert in certs]
+        assert re.search(r'^:-\)$', certs[0], re.MULTILINE)
+
+    @pytest.mark.parametrize('encoding', ['utf8', 'latin9', 'eucjp'])
+    def test_non_ascii_comments(self, encoding):
+        full_config = {'expensive': {}}
+        lines = ['expensive']
+        if encoding != 'latin9':
+            lines.append('50万円もしたなんて信じられない！')
+        lines.extend([
+            '-----BEGIN PRIVATE KEY-----',
+            'the key',
+            '-----END PRIVATE KEY-----',
+        ])
+        if encoding != 'eucjp':
+            lines.append('¿Debería haber comprado un certificado EV por 3000€?')
+        lines.extend([
+            '-----BEGIN CERTIFICATE-----',
+            'the certificate',
+            '-----END CERTIFICATE-----',
+        ])
+        lines.extend([
+            "Does it look like I'm made of money?",
+            '',
+        ])
+        lines = [line.encode(encoding) for line in lines]
+        with self.simulated_stdin(lines, linesep=b'\n'):
+            section, certs, key = cr.interact_with_sender(full_config)
+
+        assert section is full_config['expensive']
+        assert len(certs) == 1
+        assert key is not None
+        assert '\nthe certificate\n' in certs[0]
+        assert '\nthe key\n' in key
+        for char in ('万', 'い', '¿', '€', '?'):
+            assert char not in certs[0]
+            assert char not in key
 
 
 @pytest.mark.usefixtures('short_receive_timeout')
