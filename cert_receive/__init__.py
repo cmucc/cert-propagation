@@ -28,6 +28,7 @@ import argparse
 import errno
 import grp
 import json
+import locale
 import os
 import pwd
 import re
@@ -308,6 +309,14 @@ def check_configuration_section(name, section):
                 warnings.append('setting "reload_timeout" does not apply '
                                 'when a "reload_command" is not provided')
 
+        try:
+            section['openssl_ciphers'].encode('ascii', errors='strict')
+        except UnicodeError:
+            errors.append('setting "openssl_ciphers" should not include non-'
+                          'ASCII characters')
+        except KeyError:
+            pass
+
         for setting, value in CFG_DEFAULT_SETTINGS.items():
             section.setdefault(setting, value)
         if g_args.ca_file is not None:
@@ -391,11 +400,16 @@ def interact_with_sender(full_config):
                                     maxbuffer=PEM_BLOCK_MAXIMUM)
 
     try:
-        # We expect the input to be UTF-8, where multibyte characters'
-        # encodings never contain bytes from 7-bit ASCII.  Hence it is safe
-        # to apply byte regular expressions where all literals are ASCII.
+        # We expect the input to be ASCII-compatible.  E.g., UTF-8, where
+        # multibyte encodings never contain bytes from 7-bit ASCII.  Hence
+        # it should be safe to apply byte regular expressions where all
+        # literals are ASCII.
         sender.expect(br'^([^\r\n]*)[\r\n]')
-        name = sender.match.group(1).decode()
+        try:
+            name = sender.match.group(1).decode('utf-8')
+        except UnicodeError as e:
+            raise BadSenderException('Aborting, could not decode '
+                                     'configuration name') from e
         if not re.match(r'[-\.\w]+$', name):
             raise BadSenderException('Aborting, received an invalid '
                                      'configuration name')
@@ -492,7 +506,7 @@ def interact_with_sender(full_config):
                                          'maximum allowable length')
 
             scratch.extend([sender.before, sender.match.group(0), b'\n'])
-            pem_item = ''.join(part.decode() for part in scratch)
+            pem_item = ''.join(part.decode('ascii') for part in scratch)
 
             if what.endswith(b'PRIVATE KEY'):
                 key = pem_item
@@ -500,7 +514,8 @@ def interact_with_sender(full_config):
                 certificates.append(pem_item)
 
     except UnicodeError as e:
-        raise BadSenderException('Aborting, invalid UTF-8 from sender') from e
+        raise BadSenderException('Aborting, invalid PEM block with non-ASCII '
+                                 'characters from sender') from e
 
     except mini_expect.EOF as e:
         raise BadSenderException('Aborting, unexpected EOF reading from sender') from e
@@ -518,6 +533,25 @@ def interact_with_sender(full_config):
         raise BadSenderException('Did not receive any certificates')
 
     return (section, certificates, key)
+
+def system_encoding():
+    '''
+    Returns the encoding specified by the locale currently in use by the
+    system C library.  The locale.setlocale method should be called prior
+    to this routine, to ensure that the C library's current locale is
+    initialized.
+    '''
+    # Reading the documentation for various Python versions, it appears that
+    # a call to local.setlocale during one-time initialization, followed by
+    # locale.getlocale is the best way to determine the encoding to use
+    # based on system/user settings across a wide range of Python versions.
+    # Python < 3.10 does not have locale.getencoding.  On the other hand,
+    # the locale.getpreferredencoding API available in earlier versions can
+    # lie in Python >= 3.7.
+    _, encoding = locale.getlocale()
+    if encoding is None:
+        encoding = 'ascii'
+    return encoding
 
 def read_data_to_preserve(config, certificates, key):
     if key is None and config['bundle_key']:
@@ -564,7 +598,7 @@ def verify_certificate_dates(cert_objects):
 
     Raises BadCertificateException if any certificate is not valid now.
     '''
-    now = time.strftime('%Y%m%d%H%M%SZ', time.gmtime()).encode()
+    now = time.strftime('%Y%m%d%H%M%SZ', time.gmtime()).encode(system_encoding())
     for cert_object in cert_objects:
         if not cert_object.get_notBefore() <= now <= cert_object.get_notAfter():
             raise BadCertificateException('Error, received a certificate '
@@ -581,7 +615,7 @@ def verify_certificate_subject_cn(cert_object, expected_cn):
     the expected common name.
     '''
     for ntype, nvalue in cert_object.get_subject().get_components():
-        if ntype == b'CN' and nvalue == expected_cn.encode():
+        if ntype == b'CN' and nvalue == expected_cn.encode(system_encoding()):
             break
     else:
         raise BadCertificateException('Error, received a certificate from '
@@ -602,7 +636,7 @@ def read_from_file(file_name, max_size=OVERALL_PEM_MAXIMUM):
     try:
         #pylint: disable=consider-using-with; try/finally is less awkward,
         #        given the goal to drop privileges immediately after the open
-        fd = open(file_name, 'rt')
+        fd = open(file_name, 'rt', encoding=system_encoding(), errors='replace')
     finally:
         drop_privileges()
 
@@ -636,7 +670,7 @@ def find_pem_block(data, labels, pos=0):
     data after the matching block.
     '''
     dashes = '-----'
-    labels = [x.decode() for x in labels]
+    labels = [x.decode('ascii') for x in labels]
     begin_pat = re.compile('-----BEGIN ({})-----'.format('|'.join(labels)))
     end_pat = re.compile('-----END ({})-----'.format('|'.join(labels)))
 
@@ -743,7 +777,7 @@ def verify_certificate_matches_key(config, cert_object, key_object):
             break
     ctx = ssl.Context(method)
     if 'openssl_ciphers' in config:
-        ctx.set_cipher_list(config['openssl_ciphers'].encode())
+        ctx.set_cipher_list(config['openssl_ciphers'].encode(system_encoding()))
     ctx.use_certificate(cert_object)
     try:
         ctx.use_privatekey(key_object)
@@ -834,7 +868,8 @@ def _verify_trust_openssl_subprocess(config, certificates):
                 try:
                     return int(x)
                 except ValueError:
-                    return x.decode()
+                    return x.decode(system_encoding(),
+                                    errors='backslashreplace')
             _openssl_version = tuple(convert(match.group(ii))
                                      for ii in range(1, 5)
                                      if match.group(ii) is not None)
@@ -874,7 +909,7 @@ def _verify_trust_openssl_subprocess(config, certificates):
         if len(certificates) > 1:
             intermediate_temp_file = tempfile.NamedTemporaryFile(
                 mode='wt',
-                encoding='utf-8',
+                encoding=system_encoding(),
                 prefix='cert_receive_intermediate_',
                 suffix='.pem',
                 delete=False,
@@ -897,8 +932,10 @@ def _verify_trust_openssl_subprocess(config, certificates):
                                 **kwargs)
         timedout = False
         try:
-            output, _ = proc.communicate(input=certificates[0].encode(),
-                                         timeout=15)
+            output, _ = proc.communicate(
+                input=certificates[0].encode(system_encoding()),
+                timeout=15,
+            )
         except subprocess.TimeoutExpired:
             timedout = True
             try:
@@ -921,7 +958,7 @@ def _verify_trust_openssl_subprocess(config, certificates):
             else:
                 msgs.append('    "openssl verify" died due to signal {}.'
                             .format(-proc.returncode))
-            output = str(output, encoding='utf-8')
+            output = output.decode(system_encoding(), errors='backslashreplace')
             output = output.strip('\r\n')
             if output:
                 msgs.append('>>>> OUTPUT >>>>')
@@ -969,7 +1006,7 @@ def perform_verifications(config, certificates, key):
             try:
                 cert_object_storage[already_loaded:] = [
                         ssl_crypto.load_certificate(ssl_crypto.FILETYPE_PEM,
-                                                    x.encode())
+                                                    x.encode(system_encoding()))
                         for x in certificates[already_loaded:]
                 ]
             except ssl_crypto.Error as e:
@@ -1007,8 +1044,8 @@ def perform_verifications(config, certificates, key):
         representation.
         """
         try:
-            kobject = ssl_crypto.load_privatekey(
-                                 ssl_crypto.FILETYPE_PEM, kdata.encode())
+            kobject = ssl_crypto.load_privatekey(ssl_crypto.FILETYPE_PEM,
+                                                 kdata.encode(system_encoding()))
             try:
                 kobject.check()
             except TypeError:
@@ -1098,9 +1135,9 @@ def perform_verifications(config, certificates, key):
                                                 get_cert_objects())
 
 def write_one_file(file_name, data, config, setting_prefix):
-    with open(file_name, 'wb') as f:
+    with open(file_name, 'wt', encoding=system_encoding()) as f:
         if data:
-            f.write(data.encode())
+            f.write(data)
     uid, gid = (config[setting_prefix + x] for x in ('owner', 'group'))
     if os.geteuid() == 0:
         os.chown(file_name, uid, gid)
@@ -1120,7 +1157,7 @@ def backup_one_file(file_name, new_data, backup_file_name):
         return BACKUP_NOEXIST
 
     if (new_data is not None and
-            existing_data == new_data.encode()):
+            existing_data == new_data.encode(system_encoding())):
         return BACKUP_SAMEDATA
 
     with open(backup_file_name, 'wb') as f:
@@ -1328,7 +1365,7 @@ def reload_service(config):
         else:
             msgs.append('    Process died due to signal {}.'
                         .format(-proc.returncode))
-        output = str(output, encoding='utf-8')
+        output = output.decode(system_encoding(), errors='backslashreplace')
         output = output.strip('\r\n')
         if output:
             msgs.append('>>>> OUTPUT >>>>')
@@ -1350,6 +1387,10 @@ def version():
 
 def main():
     try:
+        # Make sure Python and C libraries like OpenSSL agree on the locale
+        # and therefore system encoding in-use.
+        locale.setlocale(locale.LC_ALL, '')
+
         parser = argparse.ArgumentParser()
         parser.add_argument('-V', '--version',
                             action='store_true',

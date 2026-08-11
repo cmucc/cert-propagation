@@ -32,7 +32,8 @@ When invoked, `cert_receive.py` expects to read the following from its
 standard input stream:
 
 1. A *config_name* identifying the certificates/key that are being provided,
-   followed by a line separator.
+   followed by a line separator.  The configuration name will be interpreted
+   as UTF-8 characters.
 2. A sequence of PEM-encoded certificate and private key blocks.  At least
    one certificate block must be provided.  At most one private key block
    may be provided.
