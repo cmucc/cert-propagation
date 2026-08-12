@@ -1,3 +1,9 @@
+cclub-cert-propagation (0.2+git109.542949b) UNRELEASED; urgency=medium
+
+  * New version (will be 0.3 on release).
+
+ -- Keith Bare <105995606+keithbare2@users.noreply.github.com>  Tue, 11 Aug 2026 22:25:54 -0400
+
 cclub-cert-propagation (0.2) experimental; urgency=medium
 
   * Add a Debian package for certbot_send.sh.
