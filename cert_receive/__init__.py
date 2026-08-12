@@ -828,22 +828,52 @@ def _verify_trust_python(config, cert_objects):
                                       'CA:\n' + str(e)) \
               from e
 
-_openssl_executable = None  #pylint: disable=useless-suppression,invalid-name
-_openssl_version = None     #pylint: disable=useless-suppression,invalid-name
-_openssl_env = None         #pylint: disable=useless-suppression,invalid-name
-                            #        these are all global variables, but pylint
-                            #        thinks they're constants
+_openssl_command = []   #pylint: disable=useless-suppression,invalid-name
+_openssl_version = None #pylint: disable=useless-suppression,invalid-name
+                        #        these are global variables, but pylint
+                        #        thinks they're constants
+
+def _probe_openssl_command(popen_kwargs):
+    global _openssl_command #pylint: disable=global-statement
+    global _openssl_version #pylint: disable=global-statement
+
+    executable = os.getenv('OPENSSL', default='openssl')
+    cmd = [executable, 'version']
+    with subprocess.Popen(args=cmd,
+                          stdin=subprocess.PIPE,
+                          stdout=subprocess.PIPE,
+                          stderr=subprocess.STDOUT,
+                          **popen_kwargs) as proc:
+        output, _ = proc.communicate()
+
+    match = re.search(
+        br'\bOpenSSL\s+([0-9]+)(?:\.([0-9]+)(?:\.([0-9]+)([a-z])?)?)?',
+        output
+    )
+    if match:
+        def convert(x):
+            try:
+                return int(x)
+            except ValueError:
+                return x.decode(system_encoding(),
+                                errors='backslashreplace')
+        _openssl_version = tuple(convert(match.group(ii))
+                                 for ii in range(1, 5)
+                                 if match.group(ii) is not None)
+    else:
+        _openssl_version = (99999,)
+
+    _openssl_command = [executable, 'verify']
+    if _openssl_version >= (3,):
+        _openssl_command.append('-no-CAstore')
+
 
 def _verify_trust_openssl_subprocess(config, certificates):
     '''
     Implementation of verify_certificate_issued_by_trusted_ca utilizing an
     "openssl verify" subprocess.
     '''
-    global _openssl_executable
-    global _openssl_version
-    global _openssl_env
-
-    kwargs = {}
+    popen_kwargs = {}
     # Fully drop root privileges when running openssl
     if os.getuid() == 0:
         euid = os.geteuid()
@@ -853,40 +883,15 @@ def _verify_trust_openssl_subprocess(config, certificates):
             def permanently_drop_privileges():
                 os.seteuid(0)
                 os.setuid(euid)
-            kwargs['preexec_fn'] = permanently_drop_privileges
+            popen_kwargs['preexec_fn'] = permanently_drop_privileges
 
-    if _openssl_executable is None:
-        _openssl_executable = os.getenv('OPENSSL', default='openssl')
-        cmd = [_openssl_executable, 'version']
-        with subprocess.Popen(args=cmd,
-                              stdin=subprocess.PIPE,
-                              stdout=subprocess.PIPE,
-                              stderr=subprocess.STDOUT,
-                              **kwargs) as proc:
-            output, _ = proc.communicate()
+    if not _openssl_command:
+        _probe_openssl_command(popen_kwargs)
 
-        match = re.search(
-            br'\bOpenSSL\s+([0-9]+)(?:\.([0-9]+)(?:\.([0-9]+)([a-z])?)?)?',
-            output
-        )
-        if match:
-            def convert(x):
-                try:
-                    return int(x)
-                except ValueError:
-                    return x.decode(system_encoding(),
-                                    errors='backslashreplace')
-            _openssl_version = tuple(convert(match.group(ii))
-                                     for ii in range(1, 5)
-                                     if match.group(ii) is not None)
-        else:
-            _openssl_version = (99999,)
-        _openssl_env = os.environ.copy()
+    cmd = _openssl_command.copy()
+    env = os.environ.copy()
 
-    _openssl_env.pop('SSL_CERT_FILE', None)
-    _openssl_env.pop('SSL_CERT_DIR', None)
-
-    cmd = [_openssl_executable, 'verify']
+    env.pop('SSL_CERT_FILE', None)
     if 'ca_file' in config:
         cmd.append('-CAfile')
         cmd.append(config['ca_file'])
@@ -894,8 +899,9 @@ def _verify_trust_openssl_subprocess(config, certificates):
         if _openssl_version >= (1, 1):
             cmd.append('-no-CAfile')
         else:
-            _openssl_env['SSL_CERT_FILE'] = '/dev/null'
+            env['SSL_CERT_FILE'] = '/dev/null'
 
+    env.pop('SSL_CERT_DIR', None)
     if 'ca_path' in config:
         cmd.append('-CApath')
         cmd.append(config['ca_path'])
@@ -903,13 +909,15 @@ def _verify_trust_openssl_subprocess(config, certificates):
         if _openssl_version >= (1, 1):
             cmd.append('-no-CApath')
         else:
-            _openssl_env['SSL_CERT_DIR'] = '/dev/null'
+            env['SSL_CERT_DIR'] = '/dev/null'
 
-    if _openssl_version >= (3,):
-        cmd.append('-no-CAstore')
+    #pylint: disable=consider-using-with; we have to handle clean-up for up
+    #        to three different resources, so it's easier to use a single
+    #        try/finally to take care of everything
 
     intermediate_temp_file = None
     intermediate_temp_file_name = None
+    proc = None
 
     try:
         if len(certificates) > 1:
@@ -923,29 +931,32 @@ def _verify_trust_openssl_subprocess(config, certificates):
             intermediate_temp_file_name = intermediate_temp_file.name
 
             print(''.join(certificates[1:]), file=intermediate_temp_file)
-            intermediate_temp_file.flush()
             intermediate_temp_file.close()
             intermediate_temp_file = None
 
             cmd.append('-untrusted')
             cmd.append(intermediate_temp_file_name)
 
+        app_certificate = certificates[0]
+        if os.linesep != '\n':
+            app_certificate = app_certificate.replace('\n', os.linesep)
+
         proc = subprocess.Popen(args=cmd,
                                 stdin=subprocess.PIPE,
                                 stdout=subprocess.PIPE,
                                 stderr=subprocess.STDOUT,
-                                env=_openssl_env,
-                                **kwargs)
+                                env=env,
+                                **popen_kwargs)
         timedout = False
         try:
             output, _ = proc.communicate(
-                input=certificates[0].encode(system_encoding()),
+                input=app_certificate.encode(system_encoding()),
                 timeout=15,
             )
         except subprocess.TimeoutExpired:
             timedout = True
             try:
-                os.kill(proc.pid, signal.SIGKILL)
+                proc.kill()
             except ProcessLookupError:
                 pass
             output, _ = proc.communicate()
@@ -982,6 +993,13 @@ def _verify_trust_openssl_subprocess(config, certificates):
             intermediate_temp_file.close()
         if intermediate_temp_file_name is not None:
             os.unlink(intermediate_temp_file_name)
+        if proc is not None:
+            if proc.stdin is not None:
+                proc.stdin.close()
+            if proc.stdout is not None:
+                proc.stdout.close()
+            if proc.returncode is None:
+                proc.wait()
 
 def verify_certificate_issued_by_trusted_ca(config, certificates, cert_objects):
     '''
