@@ -26,7 +26,7 @@
 # Return non-zero exit code if any of these messages/categories are detected,
 # even if score is above --fail-under value. Syntax same as enable. Messages
 # specified are enabled, while categories only check already-enabled messages.
-fail-on = ['E']
+fail-on = ['F', 'E', 'W']
 
 # Specify a score threshold under which the program will exit with error.
 fail-under = -1
