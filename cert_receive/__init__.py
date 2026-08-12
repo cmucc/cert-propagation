@@ -1355,47 +1355,45 @@ def install_files(config, certificates, key):
 def reload_service(config):
     #pylint: disable=subprocess-popen-preexec-fn; we do not run multiple
     #        threads when reloading services
-    proc = subprocess.Popen(
-        args=config['reload_command'],
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        shell=True,
-        preexec_fn=lambda: os.setpgid(0, 0))
-
-    timedout = False
-    try:
+    with subprocess.Popen(args=config['reload_command'],
+                          stdin=subprocess.DEVNULL,
+                          stdout=subprocess.PIPE,
+                          stderr=subprocess.STDOUT,
+                          shell=True,
+                          preexec_fn=lambda: os.setpgid(0, 0)) as proc:
+        timedout = False
         try:
-            output, _ = proc.communicate(timeout=config['reload_timeout'])
-        except subprocess.TimeoutExpired:
-            timedout = True
-            os.kill(-proc.pid, signal.SIGTERM)
-            output, _ = proc.communicate(timeout=10)
-    except (subprocess.TimeoutExpired, ProcessLookupError):
-        try:
-            os.kill(-proc.pid, signal.SIGKILL)
-        except ProcessLookupError:
-            pass
-        output, _ = proc.communicate()
+            try:
+                output, _ = proc.communicate(timeout=config['reload_timeout'])
+            except subprocess.TimeoutExpired:
+                timedout = True
+                os.kill(-proc.pid, signal.SIGTERM)
+                output, _ = proc.communicate(timeout=10)
+        except (subprocess.TimeoutExpired, ProcessLookupError):
+            try:
+                os.kill(-proc.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            output, _ = proc.communicate()
 
-    if proc.returncode != 0:
-        msgs = []
-        msgs.append('An error occurred restarting the associated service:')
-        if timedout:
-            msgs.append('    Process timed out and was killed.')
-        elif proc.returncode > 0:
-            msgs.append('    Process exited with return code {}.'
-                        .format(proc.returncode))
-        else:
-            msgs.append('    Process died due to signal {}.'
-                        .format(-proc.returncode))
-        output = output.decode(system_encoding(), errors='backslashreplace')
-        output = output.strip('\r\n')
-        if output:
-            msgs.append('>>>> OUTPUT >>>>')
-            msgs.append(output)
-            msgs.append('<<<<<<<<<<<<<<<<')
-        raise UpdateFailedException('\n'.join(msgs))
+        if proc.returncode != 0:
+            msgs = []
+            msgs.append('An error occurred restarting the associated service:')
+            if timedout:
+                msgs.append('    Process timed out and was killed.')
+            elif proc.returncode > 0:
+                msgs.append('    Process exited with return code {}.'
+                            .format(proc.returncode))
+            else:
+                msgs.append('    Process died due to signal {}.'
+                            .format(-proc.returncode))
+            output = output.decode(system_encoding(), errors='backslashreplace')
+            output = output.strip('\r\n')
+            if output:
+                msgs.append('>>>> OUTPUT >>>>')
+                msgs.append(output)
+                msgs.append('<<<<<<<<<<<<<<<<')
+            raise UpdateFailedException('\n'.join(msgs))
 
 def version():
     my_version = pkg_version('cert_receive')
