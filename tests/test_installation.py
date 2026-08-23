@@ -797,12 +797,12 @@ def class_tmp_path(tmp_path, request):
 @pytest.mark.usefixtures('class_tmp_path')
 class TestUpdateBundle:
     # While the line separator nominally shouldn't matter, cert_receive uses
-    # a mix of binary and text I/O.  And that means we can afoul of things
+    # a mix of binary and text I/O.  And that means we can run afoul of things
     # due to Python's automatic newline conversion feature.
     #
     # For that reason, we also need to be careful to use binary I/O when
     # writing to bundle_path in the test cases; otherwise we won't actually
-    # test with intended line separator.
+    # test with the intended line separator.
     foreach_linesep = pytest.mark.parametrize('linesep',
                                               ['\n', '\r\n', '\r'],
                                               ids=['lf', 'crlf', 'cr'])
