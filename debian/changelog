@@ -1,8 +1,8 @@
-cclub-cert-propagation (0.3~dev113+gd01ec29) UNRELEASED; urgency=medium
+cclub-cert-propagation (0.3.0) experimental; urgency=medium
 
-  * New version (will be 0.3 on release).
+  * New version.
 
- -- Keith Bare <105995606+keithbare2@users.noreply.github.com>  Sun, 23 Aug 2026 13:42:37 -0400
+ -- Keith Bare <105995606+keithbare2@users.noreply.github.com>  Sun, 23 Aug 2026 17:35:33 -0400
 
 cclub-cert-propagation (0.2) experimental; urgency=medium
 
