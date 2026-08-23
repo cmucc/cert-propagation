@@ -1,11 +1,10 @@
-__pycache__/
 /*-stamp
 /.tox/
 /build/
 /cert_receive.8
 /cert_receive.egg-info/
+/cert_receive/_version.py
 /config.mk
-/dist/
 /debian/*.debhelper
 /debian/*.log
 /debian/.debhelper/
@@ -16,5 +15,7 @@ __pycache__/
 /debian/debhelper-build-stamp
 /debian/files
 /debian/tmp/
+/dist/
 /pip_install_*
 /wrapper/cert_receive.py
+__pycache__/

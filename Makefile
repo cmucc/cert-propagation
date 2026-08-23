@@ -78,7 +78,7 @@ clean :
 	rm -f cert_receive.8 wrapper/cert_receive.py
 
 distclean : clean
-	rm -rf .tox config.mk
+	rm -rf .tox cert_receive/_version.py config.mk
 
 .PHONY : clean distclean
 

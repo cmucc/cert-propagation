@@ -39,18 +39,10 @@ import sys
 import tempfile
 import time
 
-try:
-    from importlib.metadata import version as pkg_version
-except ImportError:
-    try:
-        from importlib_metadata import version as pkg_version
-    except ImportError:
-        def pkg_version(_):
-            return '0.3'
-
 import OpenSSL.SSL as ssl
 import OpenSSL.crypto as ssl_crypto
 
+from . _version import version as my_version
 from . import mini_expect
 
 DEFAULT_CA_PATH = '/etc/ssl/certs'
@@ -1396,7 +1388,6 @@ def reload_service(config):
             raise UpdateFailedException('\n'.join(msgs))
 
 def version():
-    my_version = pkg_version('cert_receive')
     print('\n'.join([
         '{} version {}'.format(os.path.basename(sys.argv[0]), my_version),
         'Copyright (C) 2022-2026 Keith Allen Bare II',
