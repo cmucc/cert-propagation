@@ -833,7 +833,7 @@ class TestUpdateBundle:
                 assert not e, 'Test configuration resulted in errors:\n{}' \
                               .format('\n'.join(e))
                 assert not w, 'Test configuration resulted in warnings:\n{}' \
-                              .format('\n'.join(e))
+                              .format('\n'.join(w))
                 return config, certificates, key
             fake_iws.side_effect = iws_side_effect
 
