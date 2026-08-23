@@ -13,6 +13,10 @@
 # package maintainers to append LDFLAGS
 #export DEB_LDFLAGS_MAINT_APPEND = -Wl,--as-needed
 
+ifneq ($(shell test -d .git && echo $$?),0)
+export SETUPTOOLS_SCM_PRETEND_VERSION_FOR_CERT_RECEIVE = $(shell dpkg-parsechangelog -S Version | tr "~" .)
+endif
+
 
 %:
 	dh $@
